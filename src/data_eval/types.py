@@ -157,3 +157,16 @@ class EvalCase(BaseModel):
     allow_data_egress: bool = False
     cost_budget: CostBudget | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SolverOutput(BaseModel):
+    """The raw output produced by a Solver; scorers interpret and extract domain content."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    output: Annotated[str, Field(min_length=1)]
+    prompt_tokens: Annotated[int, Field(ge=0)] | None = None
+    completion_tokens: Annotated[int, Field(ge=0)] | None = None
+    latency_seconds: Annotated[float, Field(ge=0)] | None = None
+    cost_usd: Annotated[float, Field(ge=0)] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)

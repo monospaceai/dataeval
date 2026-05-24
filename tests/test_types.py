@@ -20,6 +20,7 @@ from data_eval.types import (
     PlatformRef,
     RowCountExpectation,
     SnapshotRef,
+    SolverOutput,
     UniqueExpectation,
 )
 
@@ -386,3 +387,69 @@ class TestEvalCase:
         case_b = _make_case(id="another")
         case_a.metadata["touched"] = True
         assert case_b.metadata == {}
+
+
+@pytest.mark.unit
+class TestSolverOutput:
+    def test_minimal_construction(self) -> None:
+        out = SolverOutput(output="SELECT 1")
+        assert out.output == "SELECT 1"
+        assert out.prompt_tokens is None
+        assert out.completion_tokens is None
+        assert out.latency_seconds is None
+        assert out.cost_usd is None
+        assert out.metadata == {}
+
+    def test_full_construction(self) -> None:
+        out = SolverOutput(
+            output="SELECT COUNT(*) FROM tracks WHERE genre = 'Rock'",
+            prompt_tokens=120,
+            completion_tokens=18,
+            latency_seconds=0.92,
+            cost_usd=0.00034,
+            metadata={"model": "gpt-4o", "prompt_version": "v3"},
+        )
+        assert out.prompt_tokens == 120
+        assert out.completion_tokens == 18
+        assert out.cost_usd == 0.00034
+        assert out.metadata["model"] == "gpt-4o"
+
+    def test_callable_solver_can_omit_usage(self) -> None:
+        out = SolverOutput(output="SELECT 1", metadata={"source": "custom_pipeline"})
+        assert out.prompt_tokens is None
+        assert out.metadata["source"] == "custom_pipeline"
+
+    def test_json_round_trip(self) -> None:
+        out = SolverOutput(output="SELECT 1", prompt_tokens=10, latency_seconds=0.5)
+        restored = SolverOutput.model_validate_json(out.model_dump_json())
+        assert restored == out
+
+    def test_rejects_empty_output(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverOutput(output="")
+
+    def test_rejects_negative_tokens(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverOutput.model_validate({"output": "SELECT 1", "prompt_tokens": -1})
+
+    def test_rejects_negative_latency(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverOutput.model_validate({"output": "SELECT 1", "latency_seconds": -0.1})
+
+    def test_rejects_negative_cost(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverOutput.model_validate({"output": "SELECT 1", "cost_usd": -0.01})
+
+    def test_accepts_zero_completion_tokens(self) -> None:
+        out = SolverOutput(output="SELECT 1", completion_tokens=0)
+        assert out.completion_tokens == 0
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverOutput.model_validate({"output": "SELECT 1", "sql": "SELECT 1"})
+
+    def test_default_metadata_not_shared(self) -> None:
+        a = SolverOutput(output="SELECT 1")
+        b = SolverOutput(output="SELECT 2")
+        a.metadata["touched"] = True
+        assert b.metadata == {}
