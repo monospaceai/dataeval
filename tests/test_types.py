@@ -6,6 +6,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from data_eval.types import (
+    ColumnMismatch,
     ColumnPresenceExpectation,
     ColumnTypeExpectation,
     ComparisonConfig,
@@ -19,9 +20,11 @@ from data_eval.types import (
     ExpectedSQL,
     NonNullExpectation,
     PlatformRef,
+    ResultSetDiff,
     RowCountExpectation,
     SnapshotRef,
     SolverOutput,
+    TypeMismatch,
     UniqueExpectation,
 )
 
@@ -530,3 +533,133 @@ class TestExecutionResult:
         b = ExecutionResult(rows=[], latency_seconds=0.0)
         a.metadata["touched"] = True
         assert b.metadata == {}
+
+
+@pytest.mark.unit
+class TestTypeMismatch:
+    def test_construction(self) -> None:
+        m = TypeMismatch(column="revenue", expected="DOUBLE", actual="VARCHAR")
+        assert m.column == "revenue"
+        assert m.expected == "DOUBLE"
+        assert m.actual == "VARCHAR"
+
+    def test_json_round_trip(self) -> None:
+        m = TypeMismatch(column="id", expected="INTEGER", actual="BIGINT")
+        restored = TypeMismatch.model_validate_json(m.model_dump_json())
+        assert restored == m
+
+    def test_rejects_empty_column(self) -> None:
+        with pytest.raises(ValidationError):
+            TypeMismatch(column="", expected="INT", actual="VARCHAR")
+
+    def test_rejects_empty_expected(self) -> None:
+        with pytest.raises(ValidationError):
+            TypeMismatch(column="x", expected="", actual="VARCHAR")
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            TypeMismatch.model_validate({"column": "x", "expected": "INT", "actual": "VARCHAR", "reason": "..."})
+
+
+@pytest.mark.unit
+class TestColumnMismatch:
+    def test_construction(self) -> None:
+        m = ColumnMismatch(column="revenue", unexpected_count=7)
+        assert m.column == "revenue"
+        assert m.unexpected_count == 7
+
+    def test_zero_unexpected_allowed(self) -> None:
+        m = ColumnMismatch(column="id", unexpected_count=0)
+        assert m.unexpected_count == 0
+
+    def test_json_round_trip(self) -> None:
+        m = ColumnMismatch(column="name", unexpected_count=3)
+        restored = ColumnMismatch.model_validate_json(m.model_dump_json())
+        assert restored == m
+
+    def test_rejects_empty_column(self) -> None:
+        with pytest.raises(ValidationError):
+            ColumnMismatch(column="", unexpected_count=1)
+
+    def test_rejects_negative_count(self) -> None:
+        with pytest.raises(ValidationError):
+            ColumnMismatch(column="x", unexpected_count=-1)
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            ColumnMismatch.model_validate(
+                {"column": "x", "unexpected_count": 1, "mismatch_count": 1},
+            )
+
+
+@pytest.mark.unit
+class TestResultSetDiff:
+    def test_minimal_construction(self) -> None:
+        diff = ResultSetDiff(expected_row_count=10, actual_row_count=10)
+        assert diff.expected_row_count == 10
+        assert diff.actual_row_count == 10
+        assert diff.missing_row_count == 0
+        assert diff.extra_row_count == 0
+        assert diff.missing_columns == []
+        assert diff.extra_columns == []
+        assert diff.type_mismatches == []
+        assert diff.column_mismatches == []
+
+    def test_full_construction(self) -> None:
+        diff = ResultSetDiff(
+            expected_row_count=10,
+            actual_row_count=8,
+            missing_row_count=3,
+            extra_row_count=1,
+            missing_columns=["revenue"],
+            extra_columns=["unused"],
+            type_mismatches=[TypeMismatch(column="id", expected="INTEGER", actual="BIGINT")],
+            column_mismatches=[ColumnMismatch(column="name", unexpected_count=2)],
+        )
+        assert diff.missing_row_count == 3
+        assert diff.extra_row_count == 1
+        assert diff.missing_columns == ["revenue"]
+        assert diff.type_mismatches[0].column == "id"
+        assert diff.column_mismatches[0].unexpected_count == 2
+
+    def test_zero_rows_both_sides(self) -> None:
+        diff = ResultSetDiff(expected_row_count=0, actual_row_count=0)
+        assert diff.expected_row_count == 0
+        assert diff.actual_row_count == 0
+
+    def test_json_round_trip(self) -> None:
+        diff = ResultSetDiff(
+            expected_row_count=5,
+            actual_row_count=5,
+            missing_columns=["a"],
+            type_mismatches=[TypeMismatch(column="x", expected="INT", actual="VARCHAR")],
+            column_mismatches=[ColumnMismatch(column="y", unexpected_count=3)],
+        )
+        restored = ResultSetDiff.model_validate_json(diff.model_dump_json())
+        assert restored == diff
+
+    def test_rejects_negative_expected_row_count(self) -> None:
+        with pytest.raises(ValidationError):
+            ResultSetDiff.model_validate({"expected_row_count": -1, "actual_row_count": 0})
+
+    def test_rejects_negative_missing_row_count(self) -> None:
+        with pytest.raises(ValidationError):
+            ResultSetDiff(expected_row_count=10, actual_row_count=10, missing_row_count=-1)
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            ResultSetDiff.model_validate(
+                {
+                    "expected_row_count": 1,
+                    "actual_row_count": 1,
+                    "null_mismatches": 0,
+                },
+            )
+
+    def test_default_collections_not_shared(self) -> None:
+        a = ResultSetDiff(expected_row_count=0, actual_row_count=0)
+        b = ResultSetDiff(expected_row_count=0, actual_row_count=0)
+        a.missing_columns.append("touched")
+        a.type_mismatches.append(TypeMismatch(column="x", expected="INT", actual="VARCHAR"))
+        assert b.missing_columns == []
+        assert b.type_mismatches == []

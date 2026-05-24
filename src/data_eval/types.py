@@ -182,3 +182,37 @@ class ExecutionResult(BaseModel):
     latency_seconds: Annotated[float, Field(ge=0)]
     error: Annotated[str, Field(min_length=1)] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class TypeMismatch(BaseModel):
+    """A column whose actual type in the result set differs from the expected type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: Annotated[str, Field(min_length=1)]
+    expected: Annotated[str, Field(min_length=1)]
+    actual: Annotated[str, Field(min_length=1)]
+
+
+class ColumnMismatch(BaseModel):
+    """Per-column count of rows whose value in the actual result set differs from the expected value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: Annotated[str, Field(min_length=1)]
+    unexpected_count: Annotated[int, Field(ge=0)]
+
+
+class ResultSetDiff(BaseModel):
+    """Structured difference between an actual result set and an expected result set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_count: Annotated[int, Field(ge=0)]
+    actual_row_count: Annotated[int, Field(ge=0)]
+    missing_row_count: Annotated[int, Field(ge=0)] = 0
+    extra_row_count: Annotated[int, Field(ge=0)] = 0
+    missing_columns: list[str] = Field(default_factory=list)
+    extra_columns: list[str] = Field(default_factory=list)
+    type_mismatches: list[TypeMismatch] = Field(default_factory=list)
+    column_mismatches: list[ColumnMismatch] = Field(default_factory=list)
