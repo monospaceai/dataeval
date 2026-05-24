@@ -1,5 +1,7 @@
 """Tests for the core public Pydantic types."""
 
+from typing import Any
+
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
@@ -7,6 +9,8 @@ from data_eval.types import (
     ColumnPresenceExpectation,
     ColumnTypeExpectation,
     ComparisonConfig,
+    CostBudget,
+    EvalCase,
     Expectation,
     ExpectationSuite,
     Expected,
@@ -284,3 +288,101 @@ class TestComparisonConfig:
     def test_rejects_extra_fields(self) -> None:
         with pytest.raises(ValidationError):
             ComparisonConfig.model_validate({"duplicates": "multiset"})
+
+
+@pytest.mark.unit
+class TestCostBudget:
+    def test_default_no_limit(self) -> None:
+        budget = CostBudget()
+        assert budget.max_seconds is None
+
+    def test_with_seconds(self) -> None:
+        budget = CostBudget(max_seconds=30.0)
+        assert budget.max_seconds == 30.0
+
+    def test_subsecond_budget(self) -> None:
+        budget = CostBudget(max_seconds=0.5)
+        assert budget.max_seconds == 0.5
+
+    def test_json_round_trip(self) -> None:
+        budget = CostBudget(max_seconds=12.5)
+        restored = CostBudget.model_validate_json(budget.model_dump_json())
+        assert restored == budget
+
+    def test_rejects_zero_seconds(self) -> None:
+        with pytest.raises(ValidationError):
+            CostBudget(max_seconds=0)
+
+    def test_rejects_negative_seconds(self) -> None:
+        with pytest.raises(ValidationError):
+            CostBudget(max_seconds=-1.0)
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            CostBudget.model_validate({"max_seconds": 30.0, "max_usd": 50.0})
+
+
+def _make_case(**overrides: Any) -> EvalCase:
+    defaults: dict[str, Any] = {
+        "id": "rock_track_count",
+        "input": "How many tracks are in the 'Rock' genre?",
+        "expected": ExpectedResultSet(rows=[{"count": 1297}]),
+        "platform": PlatformRef(name="local", kind="duckdb"),
+    }
+    return EvalCase(**(defaults | overrides))
+
+
+@pytest.mark.unit
+class TestEvalCase:
+    def test_minimal_construction(self) -> None:
+        case = _make_case()
+        assert case.id == "rock_track_count"
+        assert case.snapshot is None
+        assert case.comparison == ComparisonConfig()
+        assert case.allow_data_egress is False
+        assert case.cost_budget is None
+        assert case.metadata == {}
+
+    def test_full_construction(self) -> None:
+        case = EvalCase(
+            id="case-1",
+            input="List active users",
+            expected=ExpectedSQL(sql="SELECT * FROM users WHERE active"),
+            platform=PlatformRef(name="warehouse", kind="snowflake"),
+            snapshot=SnapshotRef(kind="timestamp", value="2026-05-23T00:00:00Z"),
+            comparison=ComparisonConfig(row_order="strict"),
+            allow_data_egress=True,
+            cost_budget=CostBudget(max_seconds=30.0),
+            metadata={"owner": "analytics", "ticket": "ANL-42"},
+        )
+        assert case.snapshot is not None
+        assert case.comparison.row_order == "strict"
+        assert case.allow_data_egress is True
+        assert case.metadata["owner"] == "analytics"
+
+    def test_accepts_expectation_suite(self) -> None:
+        case = _make_case(expected=ExpectationSuite(expectations=[RowCountExpectation(exact=10)]))
+        assert isinstance(case.expected, ExpectationSuite)
+
+    def test_json_round_trip(self) -> None:
+        case = _make_case()
+        restored = EvalCase.model_validate_json(case.model_dump_json())
+        assert restored == case
+
+    def test_rejects_empty_id(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_case(id="")
+
+    def test_rejects_empty_input(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_case(input="")
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_case(typo_field="anything")
+
+    def test_default_metadata_not_shared(self) -> None:
+        case_a = _make_case()
+        case_b = _make_case(id="another")
+        case_a.metadata["touched"] = True
+        assert case_b.metadata == {}

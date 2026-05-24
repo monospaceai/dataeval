@@ -133,3 +133,27 @@ class ComparisonConfig(BaseModel):
     type_equality: Literal["ignore", "strict"] = "ignore"
     null_equality: Literal["equal", "distinct"] = "equal"
     float_tolerance: Annotated[float, Field(ge=0.0)] = 1e-9
+
+
+class CostBudget(BaseModel):
+    """Per-eval-case ceiling on platform resource consumption."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_seconds: Annotated[float, Field(gt=0)] | None = None
+
+
+class EvalCase(BaseModel):
+    """One AI-evaluation case: an input with an expected outcome and a platform to run against."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: Annotated[str, Field(min_length=1)]
+    input: Annotated[str, Field(min_length=1)]
+    expected: Expected
+    platform: PlatformRef
+    snapshot: SnapshotRef | None = None
+    comparison: ComparisonConfig = Field(default_factory=ComparisonConfig)
+    allow_data_egress: bool = False
+    cost_budget: CostBudget | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
