@@ -226,6 +226,7 @@ class ResultSetDiff(BaseModel):
     extra_columns: list[str] = Field(default_factory=list)
     type_mismatches: list[TypeMismatch] = Field(default_factory=list)
     column_mismatches: list[ColumnMismatch] = Field(default_factory=list)
+    column_order_mismatch: bool = False
 
 
 class ScoreResult(BaseModel):

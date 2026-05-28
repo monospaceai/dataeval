@@ -1,10 +1,18 @@
 """Tests for the result-set equivalence engine."""
 
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
 
-from data_eval.equivalence import TypedResultSet, UntypedResultSet
-from data_eval.types import Column
+from data_eval.equivalence import TypedResultSet, UntypedResultSet, compare
+from data_eval.equivalence.columns import reconcile_columns
+from data_eval.equivalence.rows import match_multiset
+from data_eval.equivalence.types import types_match
+from data_eval.equivalence.values import cells_equal
+from data_eval.types import Column, ComparisonConfig
+
+# ---------- engine input types ----------
 
 
 @pytest.mark.unit
@@ -65,3 +73,313 @@ class TestTypedResultSet:
             TypedResultSet.model_validate(
                 {"rows": [], "schema": [{"name": "x", "type": "INT"}], "dialect": "duckdb"},
             )
+
+
+# ---------- helper-function units ----------
+
+
+@pytest.mark.unit
+class TestReconcileColumns:
+    def test_identical_columns_ignore(self) -> None:
+        common, missing, extra, order = reconcile_columns(["a", "b"], ["a", "b"], "ignore")
+        assert common == ["a", "b"]
+        assert missing == []
+        assert extra == []
+        assert order is False
+
+    def test_set_difference(self) -> None:
+        common, missing, extra, _ = reconcile_columns(["a", "c"], ["a", "b"], "ignore")
+        assert common == ["a"]
+        assert missing == ["b"]
+        assert extra == ["c"]
+
+    def test_strict_flags_positional_mismatch_with_equal_sets(self) -> None:
+        common, missing, extra, order = reconcile_columns(["b", "a"], ["a", "b"], "strict")
+        assert common == ["a", "b"]
+        assert missing == []
+        assert extra == []
+        assert order is True
+
+    def test_ignore_does_not_flag_order(self) -> None:
+        _, _, _, order = reconcile_columns(["b", "a"], ["a", "b"], "ignore")
+        assert order is False
+
+
+@pytest.mark.unit
+class TestCellsEqual:
+    def test_both_null_equal(self) -> None:
+        assert cells_equal(None, None, "equal", 0.0) is True
+
+    def test_both_null_distinct(self) -> None:
+        assert cells_equal(None, None, "distinct", 0.0) is False
+
+    def test_one_null(self) -> None:
+        assert cells_equal(None, 1, "equal", 0.0) is False
+        assert cells_equal(1, None, "equal", 0.0) is False
+
+    def test_numeric_within_tolerance(self) -> None:
+        assert cells_equal(1.0, 1.0 + 1e-10, "equal", 1e-9) is True
+
+    def test_numeric_outside_tolerance(self) -> None:
+        assert cells_equal(1.0, 1.1, "equal", 1e-9) is False
+
+    def test_int_vs_float_equal(self) -> None:
+        assert cells_equal(42, 42.0, "equal", 0.0) is True
+
+    def test_strings_equal(self) -> None:
+        assert cells_equal("rock", "rock", "equal", 0.0) is True
+        assert cells_equal("rock", "pop", "equal", 0.0) is False
+
+
+@pytest.mark.unit
+class TestMatchMultiset:
+    def test_identical_lists(self) -> None:
+        missing, extra = match_multiset(
+            [{"x": 1}, {"x": 2}],
+            [{"x": 1}, {"x": 2}],
+            ["x"],
+            "equal",
+            0.0,
+        )
+        assert (missing, extra) == (0, 0)
+
+    def test_different_order_still_matches(self) -> None:
+        missing, extra = match_multiset(
+            [{"x": 2}, {"x": 1}],
+            [{"x": 1}, {"x": 2}],
+            ["x"],
+            "equal",
+            0.0,
+        )
+        assert (missing, extra) == (0, 0)
+
+    def test_duplicates_treated_as_multiset(self) -> None:
+        # [{1},{1}] vs [{1}] reports one extra (bag semantics; a set would say equivalent)
+        missing, extra = match_multiset(
+            [{"x": 1}, {"x": 1}],
+            [{"x": 1}],
+            ["x"],
+            "equal",
+            0.0,
+        )
+        assert (missing, extra) == (0, 1)
+
+    def test_missing_row(self) -> None:
+        missing, extra = match_multiset(
+            [{"x": 1}],
+            [{"x": 1}, {"x": 2}],
+            ["x"],
+            "equal",
+            0.0,
+        )
+        assert (missing, extra) == (1, 0)
+
+
+@pytest.mark.unit
+class TestTypesMatch:
+    def test_alias_duckdb_bigint_int8(self) -> None:
+        assert types_match("BIGINT", "INT8", "duckdb") is True
+
+    def test_alias_databricks_bigint_long(self) -> None:
+        assert types_match("BIGINT", "LONG", "databricks") is True
+
+    def test_different_widths_not_equal(self) -> None:
+        assert types_match("INTEGER", "BIGINT", "duckdb") is False
+
+    def test_decimal_precision_differs(self) -> None:
+        assert types_match("DECIMAL(10, 2)", "DECIMAL(12, 4)", "duckdb") is False
+
+    def test_nested_struct_inner_type_differs(self) -> None:
+        a = "ARRAY<STRUCT<a: INT, b: STRING>>"
+        b = "ARRAY<STRUCT<a: INT, b: INT>>"
+        assert types_match(a, b, "databricks") is False
+
+    def test_nested_struct_equal(self) -> None:
+        t = "ARRAY<STRUCT<a: INT, b: STRING>>"
+        assert types_match(t, t, "databricks") is True
+
+    def test_unparseable_falls_back_to_string_equality(self) -> None:
+        assert types_match("UNKNOWN_EXOTIC_TYPE", "UNKNOWN_EXOTIC_TYPE", "duckdb") is True
+
+
+# ---------- compare() battery ----------
+
+
+def _typed(rows: list[dict[str, Any]], names: list[str], types: list[str]) -> TypedResultSet:
+    cols = [Column(name=n, type=t) for n, t in zip(names, types, strict=True)]
+    return TypedResultSet(rows=rows, schema=cols)
+
+
+def _untyped(rows: list[dict[str, Any]]) -> UntypedResultSet:
+    return UntypedResultSet(rows=rows)
+
+
+@pytest.mark.unit
+class TestCompareIdentity:
+    def test_identical_untyped(self) -> None:
+        assert compare(_untyped([{"n": 1}]), _untyped([{"n": 1}])) is None
+
+    def test_identical_typed(self) -> None:
+        a = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        b = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        assert compare(a, b, dialect="duckdb") is None
+
+    def test_value_mismatch(self) -> None:
+        diff = compare(_untyped([{"n": 1}]), _untyped([{"n": 2}]))
+        assert diff is not None
+        assert diff.missing_row_count == 1
+        assert diff.extra_row_count == 1
+
+
+@pytest.mark.unit
+class TestCompareColumnOrder:
+    def test_ignore_order_passes(self) -> None:
+        # rows are dict-keyed; column reordering shouldn't fail by default
+        a = _untyped([{"a": 1, "b": 2}])
+        b = _untyped([{"b": 2, "a": 1}])
+        assert compare(a, b) is None
+
+    def test_strict_order_mismatch_flags(self) -> None:
+        a = _typed([{"a": 1, "b": 2}], ["a", "b"], ["INT", "INT"])
+        b = _typed([{"a": 1, "b": 2}], ["b", "a"], ["INT", "INT"])
+        diff = compare(a, b, ComparisonConfig(column_order="strict"), dialect="duckdb")
+        assert diff is not None
+        assert diff.column_order_mismatch is True
+
+    def test_strict_order_match_passes(self) -> None:
+        a = _typed([{"a": 1, "b": 2}], ["a", "b"], ["INT", "INT"])
+        b = _typed([{"a": 1, "b": 2}], ["a", "b"], ["INT", "INT"])
+        assert compare(a, b, ComparisonConfig(column_order="strict"), dialect="duckdb") is None
+
+    def test_missing_columns(self) -> None:
+        a = _untyped([{"a": 1}])
+        b = _untyped([{"a": 1, "b": 2}])
+        diff = compare(a, b)
+        assert diff is not None
+        assert diff.missing_columns == ["b"]
+
+    def test_extra_columns(self) -> None:
+        a = _untyped([{"a": 1, "b": 2}])
+        b = _untyped([{"a": 1}])
+        diff = compare(a, b)
+        assert diff is not None
+        assert diff.extra_columns == ["b"]
+
+
+@pytest.mark.unit
+class TestCompareNullEquality:
+    def test_null_equal_default(self) -> None:
+        assert compare(_untyped([{"n": None}]), _untyped([{"n": None}])) is None
+
+    def test_null_distinct_flags_mismatch(self) -> None:
+        diff = compare(
+            _untyped([{"n": None}]),
+            _untyped([{"n": None}]),
+            ComparisonConfig(null_equality="distinct"),
+        )
+        assert diff is not None
+        assert diff.missing_row_count == 1
+
+
+@pytest.mark.unit
+class TestCompareFloatTolerance:
+    def test_inside_default_tolerance(self) -> None:
+        # default tol is 1e-9; 1e-10 is well within
+        assert compare(_untyped([{"v": 1.0 + 1e-10}]), _untyped([{"v": 1.0}])) is None
+
+    def test_outside_default_tolerance(self) -> None:
+        diff = compare(_untyped([{"v": 1.0 + 1e-6}]), _untyped([{"v": 1.0}]))
+        assert diff is not None
+        assert diff.missing_row_count == 1
+
+    def test_tighter_tolerance_rejects(self) -> None:
+        diff = compare(
+            _untyped([{"v": 1.0 + 1e-10}]),
+            _untyped([{"v": 1.0}]),
+            ComparisonConfig(float_tolerance=1e-12),
+        )
+        assert diff is not None
+
+
+@pytest.mark.unit
+class TestCompareMultiset:
+    def test_duplicates_not_collapsed_to_set(self) -> None:
+        # bag semantics: [{1},{1}] vs [{1}] flags one extra; set semantics would say equivalent
+        diff = compare(_untyped([{"x": 1}, {"x": 1}]), _untyped([{"x": 1}]))
+        assert diff is not None
+        assert diff.extra_row_count == 1
+        assert diff.missing_row_count == 0
+
+    def test_unordered_rows_match(self) -> None:
+        a = _untyped([{"x": 2}, {"x": 1}, {"x": 3}])
+        b = _untyped([{"x": 1}, {"x": 2}, {"x": 3}])
+        assert compare(a, b) is None
+
+
+@pytest.mark.unit
+class TestCompareTypes:
+    def test_bigint_long_databricks_equivalent(self) -> None:
+        a = _typed([{"n": 1}], ["n"], ["BIGINT"])
+        b = _typed([{"n": 1}], ["n"], ["LONG"])
+        assert compare(a, b, dialect="databricks") is None
+
+    def test_bigint_int8_duckdb_equivalent(self) -> None:
+        a = _typed([{"n": 1}], ["n"], ["BIGINT"])
+        b = _typed([{"n": 1}], ["n"], ["INT8"])
+        assert compare(a, b, dialect="duckdb") is None
+
+    def test_integer_vs_bigint_distinct(self) -> None:
+        a = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        b = _typed([{"n": 1}], ["n"], ["BIGINT"])
+        diff = compare(a, b, dialect="duckdb")
+        assert diff is not None
+        assert len(diff.type_mismatches) == 1
+        assert diff.type_mismatches[0].column == "n"
+
+    def test_compare_types_false_skips_type_check(self) -> None:
+        a = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        b = _typed([{"n": 1}], ["n"], ["BIGINT"])
+        # compare_types=False: type check skipped, dialect not required, no mismatch reported
+        assert compare(a, b, compare_types=False) is None
+
+    def test_nested_types_compared_structurally(self) -> None:
+        a = _typed([{"p": [{"a": 1}]}], ["p"], ["ARRAY<STRUCT<a: INT>>"])
+        b = _typed([{"p": [{"a": 1}]}], ["p"], ["ARRAY<STRUCT<a: STRING>>"])
+        diff = compare(a, b, dialect="databricks")
+        assert diff is not None
+        assert len(diff.type_mismatches) == 1
+
+
+@pytest.mark.unit
+class TestCompareEdgeCases:
+    def test_both_empty(self) -> None:
+        assert compare(_untyped([]), _untyped([])) is None
+
+    def test_columns_differ_only(self) -> None:
+        a = _untyped([{"a": 1}])
+        b = _untyped([{"b": 1}])
+        diff = compare(a, b)
+        assert diff is not None
+        assert diff.missing_columns == ["b"]
+        assert diff.extra_columns == ["a"]
+
+    def test_types_differ_only(self) -> None:
+        a = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        b = _typed([{"n": 1}], ["n"], ["BIGINT"])
+        diff = compare(a, b, dialect="duckdb")
+        assert diff is not None
+        assert len(diff.type_mismatches) == 1
+        assert diff.missing_row_count == 0
+        assert diff.extra_row_count == 0
+
+    def test_mixed_typed_untyped_raises(self) -> None:
+        typed = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        untyped = _untyped([{"n": 1}])
+        with pytest.raises(TypeError):
+            cast(Any, compare)(typed, untyped)
+
+    def test_missing_dialect_with_compare_types_raises(self) -> None:
+        a = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        b = _typed([{"n": 1}], ["n"], ["INTEGER"])
+        with pytest.raises(ValueError, match="dialect"):
+            compare(a, b)

@@ -5,6 +5,7 @@ The permanent nucleus of data-eval: a pure function ``compare(...) -> ResultSetD
 wraps this engine.
 """
 
+from data_eval.equivalence.compare import compare
 from data_eval.equivalence.resultset import TypedResultSet, UntypedResultSet
 
-__all__ = ["TypedResultSet", "UntypedResultSet"]
+__all__ = ["TypedResultSet", "UntypedResultSet", "compare"]

@@ -631,6 +631,7 @@ class TestResultSetDiff:
         assert diff.extra_columns == []
         assert diff.type_mismatches == []
         assert diff.column_mismatches == []
+        assert diff.column_order_mismatch is False
 
     def test_full_construction(self) -> None:
         diff = ResultSetDiff(
