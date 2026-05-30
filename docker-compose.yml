@@ -1,0 +1,23 @@
+# Postgres for data-eval's e2e tests — the `postgres` conformance params in
+# tests/platforms/test_conformance.py and the native-type tests in test_postgres.py.
+#
+#   docker compose up -d
+#   uv run pytest -m e2e
+#
+# Connection defaults match conftest.py's POSTGRES_TEST_* fallbacks, so no env vars
+# are needed for a local run. Override POSTGRES_TEST_{HOST,PORT,USER,PASS,DBNAME} to
+# point the tests at a different instance.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

@@ -21,5 +21,16 @@ uv sync                       # core + dev tooling
 uv run pre-commit install
 uv run pytest                 # tests (add --cov=data_eval for coverage)
 uv run ruff check && uv run ruff format --check
-uv run ty check               # Astral typechecker
+uv run --all-extras ty check  # typecheck with every adapter driver installed
+```
+
+### Platform e2e tests
+
+Adapter conformance for real platforms is marked `e2e` and skips when the platform
+isn't reachable, so the default `uv run pytest` is green without one. To run the
+Postgres suite locally:
+
+```bash
+docker compose up -d                  # postgres:17 on localhost:5432
+uv run --extra postgres pytest -m e2e # connection via POSTGRES_TEST_* env (defaults match compose)
 ```

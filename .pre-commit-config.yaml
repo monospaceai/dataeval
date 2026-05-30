@@ -35,4 +35,5 @@ repos:
     hooks:
       - id: validate-pyproject
 
-# No `ty` pre-commit hook yet (2026-05). Typecheck runs in CI via `uv run ty check`.
+# No `ty` pre-commit hook yet (2026-05). Typecheck runs in CI via `uv run --all-extras ty check`
+# (--all-extras so optional adapter drivers — psycopg, etc. — are present to resolve imports).
