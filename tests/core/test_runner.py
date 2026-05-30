@@ -10,7 +10,7 @@ import pytest
 
 from data_eval import CallableSolver, EvalCase, PlatformRef, ResultSetEquivalence, assert_eval
 from data_eval.platforms import DuckDBAdapter
-from data_eval.types import ExpectedResultSet
+from data_eval.types import ExecutionResult, ExpectedResultSet, SolverError, SolverOutput
 
 _ROCK_SQL = "SELECT count(*) AS count FROM tracks WHERE genre = 'Rock'"
 
@@ -66,3 +66,33 @@ class TestAssertEvalEndToEnd:
         msg = str(exc.value)
         assert "missing columns" in msg
         assert "extra columns" in msg
+
+
+class _ErrorSolver:
+    """A stub Solver that always returns a typed solver error."""
+
+    def __init__(self, error: SolverError) -> None:
+        self._error = error
+
+    def solve(self, case: EvalCase) -> SolverOutput:
+        return SolverOutput(error=self._error)
+
+
+class _ExplodingAdapter:
+    """A stub adapter whose execute fails the test if ever called."""
+
+    def execute(self, sql: str) -> ExecutionResult:
+        raise AssertionError("adapter.execute must not be called when the solver errors")
+
+
+@pytest.mark.unit
+class TestAssertEvalSolverError:
+    def test_solver_error_raises_without_executing(self) -> None:
+        case = _case([{"count": 1}])
+        solver = _ErrorSolver(SolverError(kind="auth", message="invalid api key", provider="openai"))
+        with pytest.raises(AssertionError) as exc:
+            assert_eval(case, solver, adapter=_ExplodingAdapter(), scorers=[ResultSetEquivalence()])
+        msg = str(exc.value)
+        assert "rock-count" in msg
+        assert "auth" in msg
+        assert "invalid api key" in msg

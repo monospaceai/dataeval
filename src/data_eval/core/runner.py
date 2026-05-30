@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from data_eval.platforms.base import PlatformAdapter
 from data_eval.scorers.base import Scorer
 from data_eval.solvers.base import Solver
-from data_eval.types import EvalCase, ExecutionResult, ResultSetDiff, ScoreResult, SolverOutput
+from data_eval.types import EvalCase, ExecutionResult, ResultSetDiff, ScoreResult, SolverError, SolverOutput
 
 
 def assert_eval(
@@ -39,11 +39,27 @@ def assert_eval(
     scorer fails. Returns ``None`` on success (pytest-friendly).
     """
     output = solver.solve(case)
-    result = adapter.execute(output.output)
+    if output.error is not None:
+        raise AssertionError(_format_solver_error(case, output.error))
+    sql = output.output
+    if sql is None:  # invariant: error is None implies output is set (SolverOutput validator)
+        raise AssertionError(f"data-eval case {case.id!r}: solver returned neither output nor error")
+    result = adapter.execute(sql)
     scores = [scorer.score(case, output, result) for scorer in scorers]
     failures = [s for s in scores if not s.passed]
     if failures:
         raise AssertionError(_format_failure(case, output, result, failures))
+
+
+def _format_solver_error(case: EvalCase, error: SolverError) -> str:
+    """Compose a readable message for a solver failure (no SQL was executed)."""
+    return "\n".join(
+        [
+            f"data-eval case {case.id!r} failed: solver error",
+            f"  input: {case.input}",
+            f"  solver error [{error.kind}]: {error.message}",
+        ]
+    )
 
 
 def _format_failure(

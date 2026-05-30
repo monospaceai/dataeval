@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 PlatformKind = Literal["snowflake", "bigquery", "databricks", "postgres", "duckdb"]
 
@@ -169,8 +169,36 @@ class EvalCase(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+SolverErrorKind = Literal[
+    "timeout",
+    "rate_limit",
+    "auth",
+    "bad_request",
+    "context_window_exceeded",
+    "api_connection",
+    "api_error",
+    "empty_response",
+]
+
+
+class SolverError(BaseModel):
+    """A typed, expected failure from a Solver call (errors-as-values, not a raised exception)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SolverErrorKind
+    message: Annotated[str, Field(min_length=1)]
+    provider: str | None = None
+
+
 class SolverOutput(BaseModel):
-    """A Solver's output; ``output`` is the executable artifact.
+    """A Solver's output; either a successful ``output`` artifact or an ``error``.
+
+    Exactly one of ``output``/``error`` is set (enforced by a validator): a success
+    carries the executable artifact, a failure carries a typed ``SolverError``. This is
+    errors-as-values — an expected solver failure (timeout, rate limit, auth, empty
+    response) is a returned value, not a raised exception, so the runner can compose a
+    readable diagnostic and skip execution.
 
     For SQL solvers ``output`` is the SQL to run. The Solver — not the runner or scorer —
     owns any extraction from raw model text, since the SQL must be executed before any
@@ -180,12 +208,20 @@ class SolverOutput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    output: Annotated[str, Field(min_length=1)]
+    output: Annotated[str, Field(min_length=1)] | None = None
+    error: SolverError | None = None
     prompt_tokens: Annotated[int, Field(ge=0)] | None = None
     completion_tokens: Annotated[int, Field(ge=0)] | None = None
     latency_seconds: Annotated[float, Field(ge=0)] | None = None
     cost_usd: Annotated[float, Field(ge=0)] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _exactly_one_of_output_or_error(self) -> "SolverOutput":
+        """Enforce that exactly one of ``output``/``error`` is set."""
+        if (self.output is None) == (self.error is None):
+            raise ValueError("SolverOutput requires exactly one of 'output' or 'error' to be set")
+        return self
 
 
 class ExecutionResult(BaseModel):

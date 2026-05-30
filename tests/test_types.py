@@ -25,6 +25,7 @@ from data_eval.types import (
     RowCountExpectation,
     ScoreResult,
     SnapshotRef,
+    SolverError,
     SolverOutput,
     TypeMismatch,
     UniqueExpectation,
@@ -484,6 +485,50 @@ class TestSolverOutput:
         b = SolverOutput(output="SELECT 2")
         a.metadata["touched"] = True
         assert b.metadata == {}
+
+    def test_error_construction(self) -> None:
+        out = SolverOutput(error=SolverError(kind="timeout", message="timed out"))
+        assert out.output is None
+        assert out.error is not None
+        assert out.error.kind == "timeout"
+
+    def test_rejects_neither_output_nor_error(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverOutput()
+
+    def test_rejects_both_output_and_error(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverOutput(output="SELECT 1", error=SolverError(kind="auth", message="bad key"))
+
+    def test_error_json_round_trip(self) -> None:
+        out = SolverOutput(error=SolverError(kind="rate_limit", message="429", provider="openai"))
+        restored = SolverOutput.model_validate_json(out.model_dump_json())
+        assert restored == out
+
+
+@pytest.mark.unit
+class TestSolverError:
+    def test_construction(self) -> None:
+        err = SolverError(kind="auth", message="invalid api key", provider="openai")
+        assert err.kind == "auth"
+        assert err.message == "invalid api key"
+        assert err.provider == "openai"
+
+    def test_provider_optional(self) -> None:
+        err = SolverError(kind="empty_response", message="model returned no SQL")
+        assert err.provider is None
+
+    def test_rejects_empty_message(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverError(kind="timeout", message="")
+
+    def test_rejects_unknown_kind(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverError.model_validate({"kind": "explosion", "message": "boom"})
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            SolverError.model_validate({"kind": "auth", "message": "x", "status_code": 401})
 
 
 @pytest.mark.unit
