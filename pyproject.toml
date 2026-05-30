@@ -71,6 +71,11 @@ Homepage = "https://github.com/code-alexander/data-eval"
 Repository = "https://github.com/code-alexander/data-eval"
 Issues = "https://github.com/code-alexander/data-eval/issues"
 
+# Registers the data-eval pytest plugin (the `case` fixture + session-end adapter
+# cleanup) automatically on install, so `pytest tests/` works with zero conftest setup.
+[project.entry-points.pytest11]
+data_eval = "data_eval.pytest_plugin.plugin"
+
 [build-system]
 requires = ["uv_build>=0.8.19,<0.9.0"]
 build-backend = "uv_build"

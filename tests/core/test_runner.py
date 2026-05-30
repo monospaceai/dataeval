@@ -5,11 +5,13 @@ no-LLM solver, and the real scorer. Proves the full chain and the failure-messag
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 
+import duckdb
 import pytest
 
 from data_eval import CallableSolver, EvalCase, PlatformRef, ResultSetEquivalence, assert_eval
-from data_eval.platforms import DuckDBAdapter
+from data_eval.platforms import DuckDBAdapter, duckdb_platform
 from data_eval.types import ExecutionResult, ExpectedResultSet, SolverError, SolverOutput
 
 _ROCK_SQL = "SELECT count(*) AS count FROM tracks WHERE genre = 'Rock'"
@@ -66,6 +68,35 @@ class TestAssertEvalEndToEnd:
         msg = str(exc.value)
         assert "missing columns" in msg
         assert "extra columns" in msg
+
+
+@pytest.mark.unit
+class TestAssertEvalAdapterResolution:
+    def test_resolves_adapter_from_platform_when_none_passed(self, tmp_path: Path) -> None:
+        db = tmp_path / "t.duckdb"
+        con = duckdb.connect(str(db))
+        con.execute("CREATE TABLE t (genre VARCHAR)")
+        con.execute("INSERT INTO t VALUES ('Rock'), ('Rock')")
+        con.close()
+        case = EvalCase(
+            id="resolved",
+            input="how many rock rows?",
+            expected=ExpectedResultSet(rows=[{"count": 2}]),
+            platform=duckdb_platform(name="runner-resolution", path=str(db)),
+        )
+        solver = CallableSolver(lambda c: "SELECT count(*) AS count FROM t WHERE genre = 'Rock'")
+        assert_eval(case, solver, scorers=[ResultSetEquivalence()])  # no adapter, no raise == pass
+
+    def test_unsupported_platform_kind_raises(self) -> None:
+        case = EvalCase(
+            id="unsupported",
+            input="q",
+            expected=ExpectedResultSet(rows=[{"n": 1}]),
+            platform=PlatformRef(name="wh", kind="snowflake"),
+        )
+        solver = CallableSolver(lambda c: "SELECT 1 AS n")
+        with pytest.raises(ValueError, match="no adapter is registered"):
+            assert_eval(case, solver, scorers=[ResultSetEquivalence()])
 
 
 class _ErrorSolver:

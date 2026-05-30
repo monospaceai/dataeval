@@ -6,11 +6,13 @@ adapter executes it, each Scorer compares the result, and any failure is raised 
 throughout (``ExecutionResult.error``, ``ScoreResult.passed``); only this thin wrapper
 raises, because raising *is* pytest's failure protocol.
 
-Adapter resolution (slice one): the live ``PlatformAdapter`` is passed in explicitly —
-typically from a pytest fixture that owns its connection lifecycle. The case's
-``PlatformRef`` stays declarative metadata. The upgrade path (when a loader lands) is
-GE-style: add ``resolve(PlatformRef) -> PlatformAdapter`` as a fallback and make
-``adapter`` optional, with an explicitly passed adapter always winning.
+Adapter resolution (GE-style dual rule): an explicitly passed ``adapter`` always wins —
+typically a pytest fixture that owns its own connection lifecycle. When ``adapter`` is
+omitted, the live adapter is resolved from the case's ``PlatformRef`` via
+``platforms.registry.resolve``, which caches it session-globally and closes it at session
+end (the pytest plugin's ``pytest_sessionfinish`` hook). So ``assert_eval`` never closes a
+resolved adapter mid-run — reuse across cases is the point — and never closes a
+caller-supplied one (the caller owns it).
 
 Message composition follows prevailing practice (GE/DeepEval/Inspect): the originating
 input/SQL is *not* stored on ``ScoreResult`` — it is composed here from the case, the
@@ -20,6 +22,7 @@ solver output, and the execution result, alongside the structured diff.
 from collections.abc import Sequence
 
 from data_eval.platforms.base import PlatformAdapter
+from data_eval.platforms.registry import resolve
 from data_eval.scorers.base import Scorer
 from data_eval.solvers.base import Solver
 from data_eval.types import EvalCase, ExecutionResult, ResultSetDiff, ScoreResult, SolverError, SolverOutput
@@ -29,14 +32,15 @@ def assert_eval(
     case: EvalCase,
     solver: Solver,
     *,
-    adapter: PlatformAdapter,
     scorers: Sequence[Scorer],
+    adapter: PlatformAdapter | None = None,
 ) -> None:
-    """Run ``case`` through ``solver`` + ``adapter`` + ``scorers``; raise on any failure.
+    """Run ``case`` through ``solver`` + a platform adapter + ``scorers``; raise on any failure.
 
-    Solves the case, executes the produced SQL against ``adapter``, scores the result
-    with each scorer, and raises ``AssertionError`` with a composed diagnostic if any
-    scorer fails. Returns ``None`` on success (pytest-friendly).
+    Solves the case, executes the produced SQL, scores the result with each scorer, and
+    raises ``AssertionError`` with a composed diagnostic if any scorer fails. The adapter is
+    the explicitly passed ``adapter`` if given, otherwise resolved (and session-cached) from
+    ``case.platform``. Returns ``None`` on success (pytest-friendly).
     """
     output = solver.solve(case)
     if output.error is not None:
@@ -44,7 +48,8 @@ def assert_eval(
     sql = output.output
     if sql is None:  # invariant: error is None implies output is set (SolverOutput validator)
         raise AssertionError(f"data-eval case {case.id!r}: solver returned neither output nor error")
-    result = adapter.execute(sql)
+    live = adapter if adapter is not None else resolve(case.platform)
+    result = live.execute(sql)
     scores = [scorer.score(case, output, result) for scorer in scorers]
     failures = [s for s in scores if not s.passed]
     if failures:

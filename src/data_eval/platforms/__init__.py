@@ -7,5 +7,6 @@ package imports cleanly without their drivers installed.
 
 from data_eval.platforms.base import PlatformAdapter
 from data_eval.platforms.duckdb import DuckDBAdapter
+from data_eval.platforms.registry import duckdb_platform, postgres_platform, resolve
 
-__all__ = ["DuckDBAdapter", "PlatformAdapter"]
+__all__ = ["DuckDBAdapter", "PlatformAdapter", "duckdb_platform", "postgres_platform", "resolve"]
