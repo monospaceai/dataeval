@@ -22,16 +22,20 @@ def match_multiset(
     columns: list[str],
     null_equality: Literal["equal", "distinct"],
     float_tolerance: float,
-) -> tuple[int, int]:
-    """Greedy multiset match; returns ``(missing_count, extra_count)``.
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Greedy multiset match; returns ``(missing_rows, extra_rows)``.
 
-    Each expected row consumes the first unmatched actual row that equals it. O(n*m)
-    worst case — acceptable for eval-sized result sets (answers, not full tables).
-    Best-effort under ambiguous tolerance matching; the principled successor is
-    key-aligned comparison (datacompy-style), planned alongside the match-key increment.
+    ``missing_rows`` are expected rows with no actual match; ``extra_rows`` are the
+    actual rows left over. Counts are ``len(...)`` of each; the rows themselves let
+    callers surface a sample in diagnostics (GE ``partial_unexpected_list`` / datacompy
+    ``sample_mismatch`` convention). Each expected row consumes the first unmatched
+    actual row that equals it. O(n*m) worst case — acceptable for eval-sized result
+    sets (answers, not full tables). Best-effort under ambiguous tolerance matching;
+    the principled successor is key-aligned comparison (datacompy-style), planned
+    alongside the match-key increment.
     """
     remaining = list(range(len(actual)))
-    missing = 0
+    missing_rows: list[dict[str, Any]] = []
     for exp_row in expected:
         match_i = None
         for i, idx in enumerate(remaining):
@@ -39,7 +43,8 @@ def match_multiset(
                 match_i = i
                 break
         if match_i is None:
-            missing += 1
+            missing_rows.append(exp_row)
         else:
             del remaining[match_i]
-    return missing, len(remaining)
+    extra_rows = [actual[idx] for idx in remaining]
+    return missing_rows, extra_rows

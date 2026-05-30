@@ -15,6 +15,11 @@ from data_eval.equivalence.rows import match_multiset
 from data_eval.equivalence.types import types_match
 from data_eval.types import ComparisonConfig, ResultSetDiff, SQLDialect, TypeMismatch
 
+#: Max differing rows carried in each ``ResultSetDiff`` sample. Counts stay exact; only
+#: the inline examples are capped so a large mismatch doesn't flood the failure message.
+#: Datacompy/GE use 10/20 here; made configurable when the comparison surface grows.
+SAMPLE_LIMIT = 10
+
 
 @overload
 def compare(
@@ -94,8 +99,10 @@ def compare(
     diff = ResultSetDiff(
         expected_row_count=len(expected.rows),
         actual_row_count=len(actual.rows),
-        missing_row_count=missing_rows,
-        extra_row_count=extra_rows,
+        missing_row_count=len(missing_rows),
+        extra_row_count=len(extra_rows),
+        sample_missing_rows=missing_rows[:SAMPLE_LIMIT],
+        sample_extra_rows=extra_rows[:SAMPLE_LIMIT],
         missing_columns=missing_cols,
         extra_columns=extra_cols,
         type_mismatches=type_mismatches,

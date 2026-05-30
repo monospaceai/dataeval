@@ -141,7 +141,7 @@ class TestMatchMultiset:
             "equal",
             0.0,
         )
-        assert (missing, extra) == (0, 0)
+        assert (missing, extra) == ([], [])
 
     def test_different_order_still_matches(self) -> None:
         missing, extra = match_multiset(
@@ -151,7 +151,7 @@ class TestMatchMultiset:
             "equal",
             0.0,
         )
-        assert (missing, extra) == (0, 0)
+        assert (missing, extra) == ([], [])
 
     def test_duplicates_treated_as_multiset(self) -> None:
         # [{1},{1}] vs [{1}] reports one extra (bag semantics; a set would say equivalent)
@@ -162,7 +162,8 @@ class TestMatchMultiset:
             "equal",
             0.0,
         )
-        assert (missing, extra) == (0, 1)
+        assert missing == []
+        assert extra == [{"x": 1}]
 
     def test_missing_row(self) -> None:
         missing, extra = match_multiset(
@@ -172,7 +173,8 @@ class TestMatchMultiset:
             "equal",
             0.0,
         )
-        assert (missing, extra) == (1, 0)
+        assert missing == [{"x": 2}]
+        assert extra == []
 
 
 @pytest.mark.unit
@@ -314,6 +316,21 @@ class TestCompareMultiset:
         a = _untyped([{"x": 2}, {"x": 1}, {"x": 3}])
         b = _untyped([{"x": 1}, {"x": 2}, {"x": 3}])
         assert compare(a, b) is None
+
+    def test_diff_carries_differing_row_samples(self) -> None:
+        # actual has an unexpected row; expected has one that's absent — both surface as samples
+        diff = compare(_untyped([{"n": 1298}]), _untyped([{"n": 1297}]))
+        assert diff is not None
+        assert diff.sample_extra_rows == [{"n": 1298}]
+        assert diff.sample_missing_rows == [{"n": 1297}]
+
+    def test_row_samples_are_capped(self) -> None:
+        actual = _untyped([{"n": i} for i in range(100, 130)])
+        expected = _untyped([])
+        diff = compare(actual, expected)
+        assert diff is not None
+        assert diff.extra_row_count == 30  # full magnitude
+        assert len(diff.sample_extra_rows) == 10  # SAMPLE_LIMIT
 
 
 @pytest.mark.unit

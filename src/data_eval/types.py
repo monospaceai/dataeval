@@ -170,7 +170,13 @@ class EvalCase(BaseModel):
 
 
 class SolverOutput(BaseModel):
-    """The raw output produced by a Solver; scorers interpret and extract domain content."""
+    """A Solver's output; ``output`` is the executable artifact.
+
+    For SQL solvers ``output`` is the SQL to run. The Solver — not the runner or scorer —
+    owns any extraction from raw model text, since the SQL must be executed before any
+    scorer sees a result. A dedicated extraction/filter stage (BIRD / lm-eval-harness
+    style) is the planned home for fence stripping once an LLM-backed solver lands.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -222,6 +228,11 @@ class ResultSetDiff(BaseModel):
     actual_row_count: Annotated[int, Field(ge=0)]
     missing_row_count: Annotated[int, Field(ge=0)] = 0
     extra_row_count: Annotated[int, Field(ge=0)] = 0
+    # Bounded samples of the differing rows (not just counts) — GE `partial_unexpected_list`
+    # / datacompy `sample_mismatch` convention; capped by the engine so large mismatches
+    # stay readable. `*_row_count` give the full magnitude; these give concrete examples.
+    sample_missing_rows: list[dict[str, Any]] = Field(default_factory=list)
+    sample_extra_rows: list[dict[str, Any]] = Field(default_factory=list)
     missing_columns: list[str] = Field(default_factory=list)
     extra_columns: list[str] = Field(default_factory=list)
     type_mismatches: list[TypeMismatch] = Field(default_factory=list)
