@@ -29,7 +29,7 @@ shipped in `mvp-review.md` #27, which these tasks supersede).
 
 ## BL-1 — Foundation: let scorers execute derived SQL in the warehouse
 
-**Status:** `[ ]` · **Blocks:** BL-2, BL-3
+**Status:** `[x]` done (#1) · **Blocks:** BL-2, BL-3
 
 **Why:** Every pushdown below needs to run *derived* queries (wrapping the model's SQL)
 against the platform. The current contract can't express that.
@@ -63,7 +63,7 @@ against the platform. The current contract can't express that.
 
 ## BL-2 — Push expectation-suite checks into SQL (`not_null`, `unique`, `row_count`)
 
-**Status:** `[ ]` · **Depends on:** BL-1 · **Supersedes:** the in-Python checks in
+**Status:** `[x]` done (#2) · **Depends on:** BL-1 · **Supersedes:** the in-Python checks in
 `mvp-review.md` #27
 
 **Why:** These run against the model's live query result — the exact case dbt/GE push to the
