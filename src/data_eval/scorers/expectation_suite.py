@@ -1,9 +1,10 @@
 """`ExpectationSuiteScorer`: evaluates an `ExpectationSuite` against an executed result."""
 
-from collections import Counter
-from typing import Any, assert_never
+from typing import assert_never
 
+from data_eval.scorers import sql
 from data_eval.scorers.context import ScoreContext
+from data_eval.scorers.query import QueryRunner
 from data_eval.types import (
     ColumnPresenceExpectation,
     ColumnTypeExpectation,
@@ -30,17 +31,23 @@ class ExpectationSuiteScorer:
     ) -> ScoreResult:
         """Evaluate every expectation in the suite; pass iff all hold.
 
+        Row-level checks (`row_count`, `not_null`, `unique`) are pushed into the platform as
+        SQL over the model's query via `context.queries`; only counts and bounded failing-row
+        samples are read back. Schema checks (`column_presence`, `column_type`) read the
+        result's schema metadata and run no query.
+
         Args:
             case: The eval case, carrying the `ExpectationSuite`.
             output: The solver output (part of the `Scorer` protocol; unused here).
-            result: The executed result to check the expectations against.
-            context: The score context (part of the `Scorer` protocol; unused here).
+            result: The executed result; its schema is used by the schema checks.
+            context: The score context, carrying the budget-aware `QueryRunner`.
 
         Returns:
             A `ScoreResult` that passes when all expectations hold. `outcomes` carries one
             `ExpectationOutcome` per expectation (passing and failing alike); on failure
             `explanation` lists each unmet expectation, derived from those outcomes. A failed
-            query yields a failing result with an explanation and no outcomes.
+            model query yields a failing result with an explanation and no outcomes; a failed
+            derived query fails only its own expectation's outcome.
 
         Raises:
             TypeError: If `case.expected` is not an `ExpectationSuite`.
@@ -57,7 +64,7 @@ class ExpectationSuiteScorer:
                 explanation=f"query execution failed: {result.error}",
             )
 
-        outcomes = [_evaluate_one(e, result) for e in expected.expectations]
+        outcomes = [_evaluate_one(e, result, context.queries) for e in expected.expectations]
         failures = [o for o in outcomes if not o.passed]
         if not failures:
             return ScoreResult(scorer=SCORER_NAME, passed=True, outcomes=outcomes)
@@ -65,20 +72,26 @@ class ExpectationSuiteScorer:
         return ScoreResult(scorer=SCORER_NAME, passed=False, outcomes=outcomes, explanation=explanation)
 
 
-def _evaluate_one(expectation: Expectation, result: ExecutionResult) -> ExpectationOutcome:
-    """Check one expectation against `result`.
+def _evaluate_one(expectation: Expectation, result: ExecutionResult, queries: QueryRunner) -> ExpectationOutcome:
+    """Check one expectation against `result`, pushing row-level checks into the platform.
 
     Args:
         expectation: The expectation to check.
-        result: The executed result.
+        result: The executed result (for schema checks and absent-column guards).
+        queries: The budget-aware runner used to push row-level checks into the platform.
 
     Returns:
         An `ExpectationOutcome` recording pass/fail and the compared values; its `detail`
         holds a human-readable failure message, or `None` when the expectation holds.
     """
+    model_sql = queries.model_sql
+    dialect = queries.dialect
     match expectation:
         case RowCountExpectation():
-            actual = len(result.rows)
+            scalar = queries.scalar(sql.row_count(model_sql, dialect))
+            if scalar.error is not None:
+                return _query_error_outcome(expectation.kind, None, scalar.error)
+            actual = scalar.value
             passed = actual == expectation.exact
             return ExpectationOutcome(
                 kind=expectation.kind,
@@ -134,14 +147,20 @@ def _evaluate_one(expectation: Expectation, result: ExecutionResult) -> Expectat
                     column=expectation.column,
                     detail=f"not_null: column {expectation.column!r} not found in result",
                 )
-            null_count = sum(1 for row in result.rows if row.get(expectation.column) is None)
-            passed = null_count == 0
+            scalar = queries.scalar(sql.not_null_count(model_sql, expectation.column, dialect))
+            if scalar.error is not None:
+                return _query_error_outcome(expectation.kind, expectation.column, scalar.error)
+            null_count = scalar.value
+            if null_count == 0:
+                return ExpectationOutcome(kind=expectation.kind, passed=True, column=expectation.column, count=0)
+            sample = queries.run(sql.not_null_sample(model_sql, expectation.column, dialect))
             return ExpectationOutcome(
                 kind=expectation.kind,
-                passed=passed,
+                passed=False,
                 column=expectation.column,
                 count=null_count,
-                detail=None if passed else f"not_null: column {expectation.column!r} has {null_count} NULL value(s)",
+                sample_rows=sample.rows,
+                detail=f"not_null: column {expectation.column!r} has {null_count} NULL value(s)",
             )
         case UniqueExpectation():
             if expectation.column not in _result_column_names(result):
@@ -151,21 +170,42 @@ def _evaluate_one(expectation: Expectation, result: ExecutionResult) -> Expectat
                     column=expectation.column,
                     detail=f"unique: column {expectation.column!r} not found in result",
                 )
-            counts = Counter(_hashable_key(row.get(expectation.column)) for row in result.rows)
-            duplicates = [key for key, n in counts.items() if n > 1]
-            detail = None
-            if duplicates:
-                sample = ", ".join(_render_key(key) for key in duplicates[:3])
-                detail = f"unique: column {expectation.column!r} has {len(duplicates)} duplicated value(s): {sample}"
+            scalar = queries.scalar(sql.unique_count(model_sql, expectation.column, dialect))
+            if scalar.error is not None:
+                return _query_error_outcome(expectation.kind, expectation.column, scalar.error)
+            duplicate_count = scalar.value
+            if duplicate_count == 0:
+                return ExpectationOutcome(kind=expectation.kind, passed=True, column=expectation.column, count=0)
+            sample = queries.run(sql.unique_sample(model_sql, expectation.column, dialect))
             return ExpectationOutcome(
                 kind=expectation.kind,
-                passed=not duplicates,
+                passed=False,
                 column=expectation.column,
-                count=len(duplicates),
-                detail=detail,
+                count=duplicate_count,
+                sample_rows=sample.rows,
+                detail=f"unique: column {expectation.column!r} has {duplicate_count} duplicated value(s)",
             )
         case _:  # pragma: no cover - exhaustive over the Expectation union
             assert_never(expectation)
+
+
+def _query_error_outcome(kind: str, column: str | None, error: str) -> ExpectationOutcome:
+    """Build a failing outcome for an expectation whose derived query errored.
+
+    Args:
+        kind: The expectation's kind.
+        column: The checked column, or `None` for column-less checks.
+        error: The derived-query error message.
+
+    Returns:
+        A failing `ExpectationOutcome` carrying the error in `detail`.
+    """
+    return ExpectationOutcome(
+        kind=kind,
+        passed=False,
+        column=column,
+        detail=f"{kind}: query failed: {error}",
+    )
 
 
 def _result_column_names(result: ExecutionResult) -> list[str]:
@@ -182,32 +222,3 @@ def _result_column_names(result: ExecutionResult) -> list[str]:
     if result.rows:
         return list(result.rows[0].keys())
     return []
-
-
-def _hashable_key(value: Any) -> tuple[str, Any]:
-    """Build a hashable duplicate-detection key, tagged to avoid value/repr collisions.
-
-    Args:
-        value: A cell value, possibly unhashable (e.g. a nested list/dict).
-
-    Returns:
-        `("val", value)` when `value` is hashable, else `("repr", repr(value))`.
-    """
-    try:
-        hash(value)
-    except TypeError:
-        return ("repr", repr(value))
-    return ("val", value)
-
-
-def _render_key(key: tuple[str, Any]) -> str:
-    """Render a duplicate key for display.
-
-    Args:
-        key: A key produced by `_hashable_key`.
-
-    Returns:
-        The repr of the underlying value (the surrogate repr is already a string).
-    """
-    tag, value = key
-    return value if tag == "repr" else repr(value)

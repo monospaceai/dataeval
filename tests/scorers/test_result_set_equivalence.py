@@ -30,7 +30,7 @@ class _NoopAdapter:
     def close(self) -> None: ...
 
 
-_CTX = ScoreContext(queries=QueryRunner(_NoopAdapter(), Sql("SELECT 1"), None))
+_CTX = ScoreContext(queries=QueryRunner(_NoopAdapter(), Sql("SELECT 1"), "duckdb", None))
 
 
 def _case(expected: Expected) -> EvalCase:

@@ -49,7 +49,8 @@ def assert_eval(
         raise AssertionError(msg)
     live = adapter if adapter is not None else resolve(case.platform)
     max_seconds = case.cost_budget.max_seconds if case.cost_budget is not None else None
-    queries = QueryRunner(live, sql, max_seconds)
+    dialect = case.platform.dialect or case.platform.kind
+    queries = QueryRunner(live, sql, dialect, max_seconds)
     result = queries.run(sql)
     context = ScoreContext(queries=queries)
     scores = [scorer.score(case, output, result, context=context) for scorer in scorers]

@@ -448,8 +448,10 @@ class ExpectationOutcome(BaseModel):
 
     `expected`/`actual` carry the compared scalars (a row count, a column's type
     `raw`); `count` carries the number of offending elements (NULL or duplicate
-    values); `detail` is the human-readable failure message, `None` when the
-    expectation holds. Which fields are populated depends on the expectation kind.
+    values); `sample_rows` carries a bounded sample of the offending rows (empty
+    unless the expectation failed and the kind produces one); `detail` is the
+    human-readable failure message, `None` when the expectation holds. Which fields
+    are populated depends on the expectation kind.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -460,6 +462,7 @@ class ExpectationOutcome(BaseModel):
     expected: str | None = None
     actual: str | None = None
     count: Annotated[int, Field(ge=0)] | None = None
+    sample_rows: list[dict[str, Any]] = Field(default_factory=list)
     detail: Annotated[str, Field(min_length=1)] | None = None
 
 
