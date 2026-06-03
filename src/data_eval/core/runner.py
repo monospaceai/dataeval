@@ -2,11 +2,13 @@
 
 from collections.abc import Sequence
 
-from data_eval.platforms.base import PlatformAdapter, execute_within_budget
+from data_eval.platforms.base import PlatformAdapter
 from data_eval.platforms.registry import resolve
 from data_eval.reporting.collector import CaseReport, record
 from data_eval.reporting.terminal import render_failure, render_solver_error
 from data_eval.scorers.base import Scorer
+from data_eval.scorers.context import ScoreContext
+from data_eval.scorers.query import QueryRunner
 from data_eval.solvers.base import Solver
 from data_eval.types import EvalCase
 
@@ -47,8 +49,10 @@ def assert_eval(
         raise AssertionError(msg)
     live = adapter if adapter is not None else resolve(case.platform)
     max_seconds = case.cost_budget.max_seconds if case.cost_budget is not None else None
-    result = execute_within_budget(live, sql, max_seconds)
-    scores = [scorer.score(case, output, result) for scorer in scorers]
+    queries = QueryRunner(live, sql, max_seconds)
+    result = queries.run(sql)
+    context = ScoreContext(queries=queries)
+    scores = [scorer.score(case, output, result, context=context) for scorer in scorers]
     failures = [s for s in scores if not s.passed]
     record(CaseReport(id=case.id, input=case.input, passed=not failures, scores=list(scores)))
     if failures:

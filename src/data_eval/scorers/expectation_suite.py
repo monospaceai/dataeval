@@ -3,6 +3,7 @@
 from collections import Counter
 from typing import Any, assert_never
 
+from data_eval.scorers.context import ScoreContext
 from data_eval.types import (
     ColumnPresenceExpectation,
     ColumnTypeExpectation,
@@ -24,13 +25,16 @@ SCORER_NAME = "expectation_suite"
 class ExpectationSuiteScorer:
     """Scores a case by checking its executed result against each `Expectation` in its suite."""
 
-    def score(self, case: EvalCase, output: SolverOutput, result: ExecutionResult) -> ScoreResult:
+    def score(
+        self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
+    ) -> ScoreResult:
         """Evaluate every expectation in the suite; pass iff all hold.
 
         Args:
             case: The eval case, carrying the `ExpectationSuite`.
             output: The solver output (part of the `Scorer` protocol; unused here).
             result: The executed result to check the expectations against.
+            context: The score context (part of the `Scorer` protocol; unused here).
 
         Returns:
             A `ScoreResult` that passes when all expectations hold. `outcomes` carries one

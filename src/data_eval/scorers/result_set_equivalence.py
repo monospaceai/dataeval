@@ -1,6 +1,7 @@
 """`ResultSetEquivalence`: result-set scorer wrapping the equivalence engine."""
 
 from data_eval.equivalence import TypedResultSet, UntypedResultSet, compare
+from data_eval.scorers.context import ScoreContext
 from data_eval.types import (
     EvalCase,
     ExecutionResult,
@@ -15,13 +16,16 @@ SCORER_NAME = "result_set_equivalence"
 class ResultSetEquivalence:
     """Scores a case by comparing its executed result set against its `ExpectedResultSet`."""
 
-    def score(self, case: EvalCase, output: SolverOutput, result: ExecutionResult) -> ScoreResult:
+    def score(
+        self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
+    ) -> ScoreResult:
         """Compare `result` against `case.expected`; pass iff the engine finds them equivalent.
 
         Args:
             case: The eval case, carrying the expected result set and platform.
             output: The solver output (part of the `Scorer` protocol; unused here).
             result: The executed result to compare against the expectation.
+            context: The score context (part of the `Scorer` protocol; unused here).
 
         Returns:
             A `ScoreResult` that passes when the result set matches the expectation; a

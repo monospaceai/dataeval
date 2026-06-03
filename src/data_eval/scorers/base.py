@@ -2,6 +2,7 @@
 
 from typing import Protocol, runtime_checkable
 
+from data_eval.scorers.context import ScoreContext
 from data_eval.types import EvalCase, ExecutionResult, ScoreResult, SolverOutput
 
 
@@ -9,6 +10,8 @@ from data_eval.types import EvalCase, ExecutionResult, ScoreResult, SolverOutput
 class Scorer(Protocol):
     """Produces a `ScoreResult` from a case, its solver output, and the execution result."""
 
-    def score(self, case: EvalCase, output: SolverOutput, result: ExecutionResult) -> ScoreResult:
-        """Decide pass/fail with diagnostics for `case` given `output` and `result`."""
+    def score(
+        self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
+    ) -> ScoreResult:
+        """Decide pass/fail with diagnostics for `case` given `output`, `result`, and `context`."""
         ...

@@ -2,7 +2,7 @@
 
 import pytest
 
-from data_eval.scorers import ResultSetEquivalence, Scorer
+from data_eval.scorers import QueryRunner, ResultSetEquivalence, ScoreContext, Scorer
 from data_eval.scorers.result_set_equivalence import SCORER_NAME
 from data_eval.types import (
     Column,
@@ -13,10 +13,24 @@ from data_eval.types import (
     ExpectedSQL,
     PlatformRef,
     SolverOutput,
+    Sql,
     SqlType,
 )
 
 _OUTPUT = SolverOutput(output="SELECT ...")
+
+
+class _NoopAdapter:
+    def execute(self, sql: str) -> ExecutionResult:
+        msg = "BL-1 scorers must not run queries"
+        raise AssertionError(msg)
+
+    def cancel(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+_CTX = ScoreContext(queries=QueryRunner(_NoopAdapter(), Sql("SELECT 1"), None))
 
 
 def _case(expected: Expected) -> EvalCase:
@@ -37,7 +51,7 @@ class TestResultSetEquivalence:
             schema=[Column(name="count", type="BIGINT")],
             latency_seconds=0.0,
         )
-        score = ResultSetEquivalence().score(case, _OUTPUT, result)
+        score = ResultSetEquivalence().score(case, _OUTPUT, result, context=_CTX)
         assert score.scorer == SCORER_NAME
         assert score.passed is True
         assert score.diff is None
@@ -45,7 +59,7 @@ class TestResultSetEquivalence:
     def test_fails_on_value_mismatch_and_carries_samples(self) -> None:
         case = _case(ExpectedResultSet(rows=[{"count": 1297}]))
         result = ExecutionResult(rows=[{"count": 1298}], latency_seconds=0.0)
-        score = ResultSetEquivalence().score(case, _OUTPUT, result)
+        score = ResultSetEquivalence().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.diff is not None
         assert score.diff.sample_missing_rows == [{"count": 1297}]
@@ -54,7 +68,7 @@ class TestResultSetEquivalence:
     def test_execution_error_fails_with_explanation(self) -> None:
         case = _case(ExpectedResultSet(rows=[{"count": 1297}]))
         result = ExecutionResult(rows=[], latency_seconds=0.0, error="relation does not exist")
-        score = ResultSetEquivalence().score(case, _OUTPUT, result)
+        score = ResultSetEquivalence().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.diff is None
         assert score.explanation is not None
@@ -69,7 +83,7 @@ class TestResultSetEquivalence:
             schema=[Column(name="n", type=SqlType.parse("BIGINT", "duckdb"))],
             latency_seconds=0.0,
         )
-        score = ResultSetEquivalence().score(case, _OUTPUT, result)
+        score = ResultSetEquivalence().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.diff is not None
         assert len(score.diff.type_mismatches) == 1
@@ -83,14 +97,14 @@ class TestResultSetEquivalence:
             schema=[Column(name="n", type=SqlType.parse("BIGINT", "duckdb"))],
             latency_seconds=0.0,
         )
-        score = ResultSetEquivalence().score(case, _OUTPUT, result)
+        score = ResultSetEquivalence().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
 
     def test_raises_on_non_result_set_expected(self) -> None:
         case = _case(ExpectedSQL(sql="SELECT 1"))
         result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
         with pytest.raises(TypeError, match="ExpectedResultSet"):
-            ResultSetEquivalence().score(case, _OUTPUT, result)
+            ResultSetEquivalence().score(case, _OUTPUT, result, context=_CTX)
 
     def test_satisfies_scorer_protocol(self) -> None:
         assert isinstance(ResultSetEquivalence(), Scorer)

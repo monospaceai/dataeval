@@ -8,7 +8,16 @@ import pytest
 
 from data_eval import CallableSolver, EvalCase, PlatformRef, ResultSetEquivalence, assert_eval
 from data_eval.platforms import DuckDBAdapter, duckdb_platform
-from data_eval.types import ExecutionResult, ExpectedResultSet, SolverError, SolverOutput
+from data_eval.scorers import QueryRunner, ScoreContext
+from data_eval.types import (
+    CostBudget,
+    ExecutionResult,
+    ExpectedResultSet,
+    ScoreResult,
+    SolverError,
+    SolverOutput,
+    Sql,
+)
 
 _ROCK_SQL = "SELECT count(*) AS count FROM tracks WHERE genre = 'Rock'"
 
@@ -117,3 +126,41 @@ class TestAssertEvalSolverError:
         assert "rock-count" in msg
         assert "auth" in msg
         assert "invalid api key" in msg
+
+
+class _SpyScorer:
+    """A stub Scorer that captures the injected context and passes."""
+
+    def __init__(self) -> None:
+        self.context: ScoreContext | None = None
+
+    def score(
+        self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
+    ) -> ScoreResult:
+        self.context = context
+        return ScoreResult(scorer="spy", passed=True)
+
+
+@pytest.mark.unit
+class TestAssertEvalContext:
+    def test_injects_usable_query_runner(self, duck: DuckDBAdapter) -> None:
+        case = _case([{"count": 2}])
+        solver = CallableSolver(lambda c: _ROCK_SQL)
+        spy = _SpyScorer()
+        assert_eval(case, solver, adapter=duck, scorers=[spy])
+        assert isinstance(spy.context, ScoreContext)
+        assert isinstance(spy.context.queries, QueryRunner)
+        derived = spy.context.queries.run(Sql("SELECT 1"))
+        assert derived.error is None
+        assert derived.rows == [{"1": 1}]
+
+    def test_model_query_flows_through_runner_under_budget(self, duck: DuckDBAdapter) -> None:
+        case = EvalCase(
+            id="rock-count",
+            input="How many tracks are in the 'Rock' genre?",
+            expected=ExpectedResultSet(rows=[{"count": 2}]),
+            platform=PlatformRef(name="local", kind="duckdb"),
+            cost_budget=CostBudget(max_seconds=30.0),
+        )
+        solver = CallableSolver(lambda c: _ROCK_SQL)
+        assert_eval(case, solver, adapter=duck, scorers=[ResultSetEquivalence()])  # no raise == pass

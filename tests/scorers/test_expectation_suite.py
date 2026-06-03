@@ -2,7 +2,7 @@
 
 import pytest
 
-from data_eval.scorers import ExpectationSuiteScorer, Scorer
+from data_eval.scorers import ExpectationSuiteScorer, QueryRunner, ScoreContext, Scorer
 from data_eval.scorers.expectation_suite import SCORER_NAME
 from data_eval.types import (
     Column,
@@ -19,11 +19,25 @@ from data_eval.types import (
     RowCountExpectation,
     ScoreResult,
     SolverOutput,
+    Sql,
     SqlType,
     UniqueExpectation,
 )
 
 _OUTPUT = SolverOutput(output="SELECT ...")
+
+
+class _NoopAdapter:
+    def execute(self, sql: str) -> ExecutionResult:
+        msg = "BL-1 scorers must not run queries"
+        raise AssertionError(msg)
+
+    def cancel(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+_CTX = ScoreContext(queries=QueryRunner(_NoopAdapter(), Sql("SELECT 1"), None))
 
 
 def _case(expected: Expected) -> EvalCase:
@@ -50,7 +64,7 @@ class TestRowCount:
     def test_pass(self) -> None:
         case = _suite(RowCountExpectation(exact=2))
         result = ExecutionResult(rows=[{"n": 1}, {"n": 2}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.scorer == SCORER_NAME
         assert score.passed is True
         assert score.explanation is None
@@ -60,7 +74,7 @@ class TestRowCount:
     def test_fail(self) -> None:
         case = _suite(RowCountExpectation(exact=5))
         result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "expected 5 rows, got 1" in score.explanation
@@ -84,19 +98,19 @@ class TestColumnPresence:
             schema=[Column(name="id", type="BIGINT"), Column(name="name", type="VARCHAR")],
             latency_seconds=0.0,
         )
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         assert _sole(score) == ExpectationOutcome(kind="column_presence", passed=True, detail=None)
 
     def test_pass_from_rows_when_no_schema(self) -> None:
         case = _suite(ColumnPresenceExpectation(columns=["id"]))
         result = ExecutionResult(rows=[{"id": 1, "name": "x"}], latency_seconds=0.0)
-        assert ExpectationSuiteScorer().score(case, _OUTPUT, result).passed is True
+        assert ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX).passed is True
 
     def test_fail_lists_missing(self) -> None:
         case = _suite(ColumnPresenceExpectation(columns=["id", "missing"]))
         result = ExecutionResult(rows=[{"id": 1}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "missing" in score.explanation
@@ -112,7 +126,7 @@ class TestColumnPresence:
         # expected column is reported missing.
         case = _suite(ColumnPresenceExpectation(columns=["id"]))
         result = ExecutionResult(rows=[], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "id" in score.explanation
@@ -127,7 +141,7 @@ class TestColumnType:
             schema=[Column(name="n", type=SqlType.parse("BIGINT", "duckdb"))],
             latency_seconds=0.0,
         )
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         assert _sole(score) == ExpectationOutcome(
             kind="column_type", passed=True, column="n", expected="BIGINT", actual="BIGINT", detail=None
@@ -141,7 +155,7 @@ class TestColumnType:
             schema=[Column(name="n", type=SqlType.parse("BIGINT", "duckdb"))],
             latency_seconds=0.0,
         )
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         # Aliased pass: expected/actual preserve the distinct authored vs observed `raw` spellings.
         outcome = _sole(score)
@@ -156,7 +170,7 @@ class TestColumnType:
             schema=[Column(name="n", type=SqlType.parse("BIGINT", "duckdb"))],
             latency_seconds=0.0,
         )
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "column_type" in score.explanation
@@ -174,7 +188,7 @@ class TestColumnType:
             schema=[Column(name="n", type=SqlType.parse("BIGINT", "duckdb"))],
             latency_seconds=0.0,
         )
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "not found" in score.explanation
@@ -187,7 +201,7 @@ class TestColumnType:
     def test_fail_no_schema(self) -> None:
         case = _suite(ColumnTypeExpectation(column="n", expected_type="BIGINT"))
         result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "no column schema available" in score.explanation
@@ -203,14 +217,14 @@ class TestNotNull:
     def test_pass(self) -> None:
         case = _suite(NotNullExpectation(column="email"))
         result = ExecutionResult(rows=[{"email": "a"}, {"email": "b"}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         assert _sole(score) == ExpectationOutcome(kind="not_null", passed=True, column="email", count=0, detail=None)
 
     def test_pass_zero_rows(self) -> None:
         case = _suite(NotNullExpectation(column="email"))
         result = ExecutionResult(rows=[], schema=[Column(name="email", type="VARCHAR")], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         assert _sole(score).count == 0
 
@@ -220,7 +234,7 @@ class TestNotNull:
             rows=[{"email": "a"}, {"email": None}, {"email": None}],
             latency_seconds=0.0,
         )
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "2 NULL value(s)" in score.explanation
@@ -233,7 +247,7 @@ class TestNotNull:
     def test_fail_absent_column(self) -> None:
         case = _suite(NotNullExpectation(column="email"))
         result = ExecutionResult(rows=[{"id": 1}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "not found" in score.explanation
@@ -248,14 +262,14 @@ class TestUnique:
     def test_pass(self) -> None:
         case = _suite(UniqueExpectation(column="id"))
         result = ExecutionResult(rows=[{"id": 1}, {"id": 2}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         assert _sole(score) == ExpectationOutcome(kind="unique", passed=True, column="id", count=0, detail=None)
 
     def test_fail_duplicate(self) -> None:
         case = _suite(UniqueExpectation(column="id"))
         result = ExecutionResult(rows=[{"id": 1}, {"id": 1}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "duplicated value(s)" in score.explanation
@@ -269,28 +283,28 @@ class TestUnique:
         # dbt semantics: NULLs compare as equal, so two NULLs are a duplicate.
         case = _suite(UniqueExpectation(column="id"))
         result = ExecutionResult(rows=[{"id": None}, {"id": None}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert _sole(score).count == 1
 
     def test_unhashable_values_duplicate(self) -> None:
         case = _suite(UniqueExpectation(column="c"))
         result = ExecutionResult(rows=[{"c": [1, 2]}, {"c": [1, 2]}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert _sole(score).count == 1
 
     def test_unhashable_values_distinct(self) -> None:
         case = _suite(UniqueExpectation(column="c"))
         result = ExecutionResult(rows=[{"c": [1]}, {"c": [2]}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         assert _sole(score).count == 0
 
     def test_fail_absent_column(self) -> None:
         case = _suite(UniqueExpectation(column="id"))
         result = ExecutionResult(rows=[{"x": 1}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.explanation is not None
         assert "not found" in score.explanation
@@ -305,7 +319,7 @@ class TestSuiteAggregation:
     def test_execution_error_passthrough(self) -> None:
         case = _suite(RowCountExpectation(exact=1))
         result = ExecutionResult(rows=[], latency_seconds=0.0, error="boom")
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.diff is None
         assert score.outcomes == []
@@ -316,12 +330,12 @@ class TestSuiteAggregation:
         case = _case(ExpectedSQL(sql="SELECT 1"))
         result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
         with pytest.raises(TypeError, match="ExpectationSuite"):
-            ExpectationSuiteScorer().score(case, _OUTPUT, result)
+            ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
 
     def test_aggregates_multiple_failures(self) -> None:
         case = _suite(RowCountExpectation(exact=5), NotNullExpectation(column="email"))
         result = ExecutionResult(rows=[{"email": None}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         assert score.diff is None
         assert score.explanation is not None
@@ -339,7 +353,7 @@ class TestSuiteAggregation:
     def test_mixed_suite_exposes_pass_and_fail_outcomes(self) -> None:
         case = _suite(RowCountExpectation(exact=1), NotNullExpectation(column="email"))
         result = ExecutionResult(rows=[{"email": None}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is False
         row_count, not_null = score.outcomes
         assert row_count.kind == "row_count"
@@ -358,7 +372,7 @@ class TestSuiteAggregation:
             NotNullExpectation(column="id"),
         )
         result = ExecutionResult(rows=[{"id": 1}], latency_seconds=0.0)
-        score = ExpectationSuiteScorer().score(case, _OUTPUT, result)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_CTX)
         assert score.passed is True
         assert score.explanation is None
         assert [o.kind for o in score.outcomes] == ["row_count", "column_presence", "unique", "not_null"]
