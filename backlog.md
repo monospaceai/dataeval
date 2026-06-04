@@ -106,7 +106,14 @@ is chosen.
 
 ## BL-3 — Push result-set equivalence into the warehouse
 
-**Status:** `[ ]` · **Depends on:** BL-1
+**Status:** BL-3a `[x]` done (#4) · BL-3b `[ ]` open · **Depends on:** BL-1
+
+**Staging:** BL-3a shipped the keyless `EXCEPT ALL` symmetric-diff path (bag semantics,
+engine-native NULL equality, typed expected-row materialisation, rounding-based float
+tolerance; `null_equality="distinct"` rejected as a failing result). **BL-3b** adds the
+keyed `FULL OUTER JOIN` path (SQLMesh/datacompy style) for the cases `EXCEPT ALL` can't
+express — `null_equality="distinct"` via `IS DISTINCT FROM`, an exact `abs(a-b) <= tol`
+tolerance band, and per-column `column_mismatches` — used when a match key is supplied.
 
 **Why:** Result-set equivalence is the biggest serialisation surface — it fetches every row
 into Python and compares with a hand-rolled matcher, so it tests our driver coercion + match
