@@ -1,0 +1,221 @@
+"""Conformance battery for result-set equivalence: identical pass/fail + diff counts on DuckDB and Postgres.
+
+Each case builds its model from engine-portable inline `SELECT … UNION ALL`, runs the real
+`ResultSetEquivalence` scorer over a real `QueryRunner`, and asserts the same outcome on both
+engines — proving the diff uses engine-native `EXCEPT ALL` semantics, not a Python matcher.
+"""
+
+from decimal import Decimal
+
+import pytest
+
+from data_eval.platforms.base import PlatformAdapter
+from data_eval.platforms.duckdb import DuckDBAdapter
+from data_eval.scorers import QueryRunner, ResultSetEquivalence, ScoreContext
+from data_eval.scorers.sql import Dialect
+from data_eval.types import (
+    Column,
+    ComparisonConfig,
+    EvalCase,
+    ExpectedResultSet,
+    PlatformRef,
+    Schema,
+    ScoreResult,
+    SolverOutput,
+    Sql,
+    SqlType,
+)
+
+from .conftest import connect_postgres_or_skip
+
+
+def _duckdb_engine() -> tuple[PlatformAdapter, Dialect]:
+    return DuckDBAdapter(), "duckdb"
+
+
+def _postgres_engine() -> tuple[PlatformAdapter, Dialect]:
+    return connect_postgres_or_skip(), "postgres"
+
+
+@pytest.fixture(
+    params=[
+        pytest.param(_duckdb_engine, id="duckdb", marks=pytest.mark.unit),
+        pytest.param(_postgres_engine, id="postgres", marks=pytest.mark.e2e),
+    ],
+)
+def engine(request: pytest.FixtureRequest) -> tuple[PlatformAdapter, Dialect]:
+    """An (adapter, dialect) pair, parametrised across DuckDB (unit) and Postgres (e2e)."""
+    return request.param()
+
+
+def _score(
+    engine: tuple[PlatformAdapter, Dialect],
+    model: str,
+    expected: ExpectedResultSet,
+    comparison: ComparisonConfig | None = None,
+) -> ScoreResult:
+    """Run the model through the adapter, then score its result against `expected`."""
+    adapter, dialect = engine
+    model_sql = Sql(model)
+    kind = "postgres" if dialect == "postgres" else "duckdb"
+    case = EvalCase(
+        id="c",
+        input="q",
+        expected=expected,
+        platform=PlatformRef(name="x", kind=kind),
+        comparison=comparison or ComparisonConfig(),
+    )
+    result = adapter.execute(model_sql)
+    queries = QueryRunner(adapter, model_sql, dialect, None)
+    return ResultSetEquivalence().score(
+        case, SolverOutput(output=model_sql), result, context=ScoreContext(queries=queries)
+    )
+
+
+def _schema(*pairs: tuple[str, str], dialect: Dialect) -> Schema:
+    return Schema(root=[Column(name=n, type=SqlType.parse(t, dialect)) for n, t in pairs])
+
+
+def _int_rows(values: list[int]) -> str:
+    return " UNION ALL ".join(f"SELECT {v} AS n" for v in values)
+
+
+def test_identical_typed_rows_pass(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": 1}, {"n": 2}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, "SELECT 1 AS n UNION ALL SELECT 2 AS n", expected)
+    assert score.passed is True
+    assert score.diff is None
+
+
+def test_one_value_differs_fails(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": 1}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, "SELECT 2 AS n", expected)
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.missing_row_count == 1
+    assert score.diff.extra_row_count == 1
+    assert score.diff.sample_missing_rows == [{"n": 1}]
+    assert score.diff.sample_extra_rows == [{"n": 2}]
+
+
+def test_duplicates_fail_via_bag_semantics(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    # actual [{1},{1}] vs expected [{1}]: EXCEPT ALL is a bag, so one extra (a set would pass).
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": 1}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, _int_rows([1, 1]), expected)
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.extra_row_count == 1
+    assert score.diff.missing_row_count == 0
+
+
+def test_unordered_rows_pass(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": 1}, {"n": 2}, {"n": 3}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, _int_rows([2, 1, 3]), expected)
+    assert score.passed is True
+
+
+def test_null_equal_passes(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": None}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, "SELECT CAST(NULL AS INTEGER) AS n", expected)
+    assert score.passed is True
+
+
+def test_null_present_one_side_only_fails(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": None}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, "SELECT 1 AS n", expected)
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.missing_row_count == 1
+    assert score.diff.extra_row_count == 1
+
+
+def test_distinct_null_equality_rejected(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": None}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, "SELECT CAST(NULL AS INTEGER) AS n", expected, ComparisonConfig(null_equality="distinct"))
+    assert score.passed is False
+    assert score.diff is None
+    assert score.explanation == "null_equality='distinct' is not supported by the SQL equivalence path"
+
+
+def test_within_tolerance_passes(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"v": 1.0}], schema=_schema(("v", "DOUBLE"), dialect=dialect))
+    score = _score(engine, "SELECT CAST(1.0000000001 AS DOUBLE PRECISION) AS v", expected)
+    assert score.passed is True
+
+
+def test_outside_tolerance_fails(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"v": 1.0}], schema=_schema(("v", "DOUBLE"), dialect=dialect))
+    score = _score(engine, "SELECT CAST(1.000001 AS DOUBLE PRECISION) AS v", expected)
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.missing_row_count == 1
+
+
+def test_typed_value_no_string_vs_number_false_mismatch(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(
+        rows=[{"price": Decimal("2.50")}], schema=_schema(("price", "NUMERIC"), dialect=dialect)
+    )
+    score = _score(engine, "SELECT CAST(2.50 AS NUMERIC) AS price", expected)
+    assert score.passed is True
+
+
+def test_quoted_reserved_column_with_diff_fails(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"order": 1}], schema=_schema(("order", "INTEGER"), dialect=dialect))
+    score = _score(engine, 'SELECT 2 AS "order"', expected)
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.missing_row_count == 1
+    assert score.diff.extra_row_count == 1
+
+
+def test_missing_and_unexpected_columns(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(
+        rows=[{"a": 1, "b": 2}],
+        schema=_schema(("a", "INTEGER"), ("b", "INTEGER"), dialect=dialect),
+    )
+    score = _score(engine, "SELECT 1 AS a, 3 AS c", expected)
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.missing_columns == ["b"]
+    assert score.diff.unexpected_columns == ["c"]
+
+
+def test_derived_query_error_fails_without_raise(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[{"n": 1}], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(engine, "SELECT n FROM does_not_exist_xyz", expected)
+    assert score.passed is False
+    assert score.diff is None
+    assert score.explanation is not None
+
+
+def test_empty_vs_empty_passes(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    score = _score(
+        engine, "SELECT 1 AS n WHERE 1 = 0" if dialect == "duckdb" else "SELECT 1 AS n WHERE false", expected
+    )
+    assert score.passed is True
+
+
+def test_sample_cap_at_twenty(engine: tuple[PlatformAdapter, Dialect]) -> None:
+    _, dialect = engine
+    expected = ExpectedResultSet(rows=[], schema=_schema(("n", "INTEGER"), dialect=dialect))
+    model = _int_rows(list(range(30)))
+    score = _score(engine, model, expected)
+    assert score.passed is False
+    assert score.diff is not None
+    assert score.diff.extra_row_count == 30
+    assert len(score.diff.sample_extra_rows) == 20
