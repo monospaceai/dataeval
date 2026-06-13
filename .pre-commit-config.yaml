@@ -18,12 +18,14 @@ repos:
         args: ["--fix=lf"]
       - id: debug-statements
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.14
+  - repo: local
     hooks:
       - id: ruff
-        args: ["--fix", "--exit-non-zero-on-fix"]
-      - id: ruff-format
+        name: ruff (just fix)
+        entry: just fix
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
 
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.9.7
@@ -35,5 +37,5 @@ repos:
     hooks:
       - id: validate-pyproject
 
-# No `ty` pre-commit hook yet (2026-05). Typecheck runs in CI via `uv run --all-extras ty check`
-# (--all-extras so optional adapter drivers — psycopg, etc. — are present to resolve imports).
+# No `ty` pre-commit hook yet (2026-05): too slow for a commit hook. Typecheck runs in CI
+# via `just typecheck` (--all-extras so optional adapter drivers resolve).
