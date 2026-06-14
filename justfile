@@ -3,7 +3,7 @@ test *args:
 
 test-cov *args:
     uv run coverage erase
-    uv run --extra postgres coverage run -m pytest {{args}}
+    uv run --all-extras coverage run -m pytest {{args}}
     uv run coverage combine
     uv run coverage report
 

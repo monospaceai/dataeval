@@ -45,7 +45,19 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
-      - run: just ci
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+      - name: Serve Ollama, pull model, run CI
+        run: |
+          nohup ollama serve > /tmp/ollama.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:11434/api/tags >/dev/null && break
+            sleep 1
+          done
+          ollama pull qwen2.5-coder:1.5b
+          just ci
+        env:
+          DATA_EVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
 
   check:
     if: always()
