@@ -3,7 +3,7 @@
 import pytest
 
 from dataeval.scorers import QueryRunner
-from dataeval.types import ExecutionResult, Sql
+from dataeval.types import Column, ExecutionResult, Schema, Sql, SqlType
 
 
 class _RecordingAdapter:
@@ -18,6 +18,22 @@ class _RecordingAdapter:
     def cancel(self) -> None: ...
 
     def close(self) -> None: ...
+
+
+class _UnresolvedAdapter(_RecordingAdapter):
+    """A fake backend that leaves parameters unresolved: its type probe runs through the runner's budgeted `execute`."""
+
+    def type_probe_sql(self, sql: str) -> str:
+        return f"PROBE {sql}"
+
+    def types_from_probe(self, rows: list[dict[str, object]]) -> list[SqlType] | str:
+        if not rows:
+            return "probe returned no rows"
+        return [SqlType.parse(str(r["type"]), "databricks") for r in rows]
+
+
+def _schema(*cols: tuple[str, str]) -> Schema:
+    return Schema(root=[Column(name=n, type=SqlType.parse(t, "databricks"), nullable=None) for n, t in cols])
 
 
 def _runner(results: list[ExecutionResult], budget: float | None) -> tuple[QueryRunner, _RecordingAdapter]:
@@ -123,3 +139,54 @@ class TestScalar:
         assert out.error is not None
         assert "budget" in out.error
         assert len(adapter.executed) == 1
+
+
+@pytest.mark.unit
+class TestResolvedSchema:
+    def test_precise_backend_returns_base_unchanged(self) -> None:
+        base = _schema(("amount", "decimal"))
+        runner, _ = _runner([], None)  # _RecordingAdapter is not a TypeResolvingAdapter
+        assert runner.resolved_schema(base, Sql("SELECT amount")) is base
+
+    def test_unresolved_backend_probes_through_runner_and_grafts_by_position(self) -> None:
+        probe = ExecutionResult(
+            rows=[{"type": "decimal(10,2)"}, {"type": "array<string>"}],
+            latency_seconds=0.1,
+        )
+        adapter = _UnresolvedAdapter([probe])
+        runner = QueryRunner(adapter, Sql("SELECT amount, tags"), "databricks", None)
+        out = runner.resolved_schema(_schema(("amount", "decimal"), ("tags", "array")), runner.model_sql)
+        assert isinstance(out, Schema)
+        assert out.types == [
+            SqlType.parse("decimal(10,2)", "databricks"),
+            SqlType.parse("array<string>", "databricks"),
+        ]
+        assert out.names == ["amount", "tags"]  # names/order kept from base
+        assert adapter.executed == ["PROBE SELECT amount, tags"]  # probe ran through the runner
+
+    def test_column_count_mismatch_is_error(self) -> None:
+        # Probe yields fewer columns than the result has → surfaced, never silently unresolved.
+        probe = ExecutionResult(rows=[{"type": "decimal(10,2)"}], latency_seconds=0.0)
+        adapter = _UnresolvedAdapter([probe])
+        runner = QueryRunner(adapter, Sql("SELECT amount, note"), "databricks", None)
+        out = runner.resolved_schema(_schema(("amount", "decimal"), ("note", "string")), runner.model_sql)
+        assert isinstance(out, str)
+        assert "1 column type(s) for a 2-column result" in out
+
+    def test_probe_query_error_propagates(self) -> None:
+        adapter = _UnresolvedAdapter([ExecutionResult(rows=[], latency_seconds=0.0, error="warehouse down")])
+        runner = QueryRunner(adapter, Sql("SELECT n"), "databricks", None)
+        assert runner.resolved_schema(_schema(("n", "int")), runner.model_sql) == "warehouse down"
+
+    def test_probe_parse_error_propagates(self) -> None:
+        adapter = _UnresolvedAdapter([ExecutionResult(rows=[], latency_seconds=0.0)])  # success, no rows
+        runner = QueryRunner(adapter, Sql("SELECT n"), "databricks", None)
+        assert runner.resolved_schema(_schema(("n", "int")), runner.model_sql) == "probe returned no rows"
+
+    def test_probe_respects_exhausted_budget(self) -> None:
+        adapter = _UnresolvedAdapter([ExecutionResult(rows=[{"name": "n", "type": "int"}], latency_seconds=0.0)])
+        runner = QueryRunner(adapter, Sql("SELECT n"), "databricks", 0.0)  # pool already exhausted
+        out = runner.resolved_schema(_schema(("n", "int")), runner.model_sql)
+        assert isinstance(out, str)
+        assert "budget" in out
+        assert adapter.executed == []  # the probe never reached the adapter

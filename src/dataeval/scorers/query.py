@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 from typing import Any
 
-from dataeval.platforms.base import PlatformAdapter, execute_within_budget
+from dataeval.platforms.base import PlatformAdapter, TypeResolvingAdapter, execute_within_budget
 from dataeval.scorers.sql import Dialect
-from dataeval.types import ExecutionResult, Sql
+from dataeval.types import Column, ExecutionResult, Schema, Sql
 
 
 @dataclass(frozen=True)
@@ -103,3 +103,32 @@ class QueryRunner:
             )
         (value,) = result.rows[0].values()
         return ScalarResult(value=value, error=None, latency_seconds=result.latency_seconds)
+
+    def resolved_schema(self, base: Schema, sql: Sql) -> Schema | str:
+        """Return `base` with its column types resolved to the platform's precise types.
+
+        Backends that already report precise types return `base` unchanged; otherwise the
+        adapter's type probe runs through this runner (drawing on the same budget) and its
+        types align to `base`'s columns by position, preserving names and nullability.
+
+        Args:
+            base: The schema whose column types to resolve, as `execute` reported them.
+            sql: The statement that produced `base`, re-probed for precise types.
+
+        Returns:
+            `base`, a new `Schema` with precise types, or an error string (errors-as-values).
+        """
+        adapter = self._adapter
+        if not isinstance(adapter, TypeResolvingAdapter):
+            return base
+        probe = self.run(Sql(adapter.type_probe_sql(sql)))
+        if probe.error is not None:
+            return probe.error
+        types = adapter.types_from_probe(probe.rows)
+        if isinstance(types, str):
+            return types
+        if len(types) != len(base.root):
+            return f"type probe returned {len(types)} column type(s) for a {len(base.root)}-column result"
+        return Schema(
+            root=[Column(name=c.name, type=t, nullable=c.nullable) for c, t in zip(base.root, types, strict=True)]
+        )

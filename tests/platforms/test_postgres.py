@@ -5,7 +5,7 @@ from sqlglot import exp
 
 from dataeval.platforms.base import PlatformAdapter
 
-from .conftest import connect_postgres_or_skip
+from .conftest import connect_postgres
 
 
 @pytest.mark.e2e
@@ -14,7 +14,7 @@ class TestPostgresNativeTypes:
 
     @pytest.fixture
     def adapter(self) -> PlatformAdapter:
-        return connect_postgres_or_skip()
+        return connect_postgres()
 
     @pytest.mark.parametrize(
         ("sql", "expected_type"),
@@ -63,7 +63,7 @@ class TestPostgresLifecycle:
     """Connection lifecycle and non-row-returning statements."""
 
     def test_context_manager_returns_self_and_closes(self) -> None:
-        connect_postgres_or_skip().close()  # skip unless a Postgres is reachable
+        connect_postgres().close()  # fail early if Postgres is unreachable
         from dataeval.platforms.postgres import PostgresAdapter
 
         from .conftest import _postgres_dsn
@@ -74,7 +74,7 @@ class TestPostgresLifecycle:
         assert adapter.execute("SELECT 1 AS n").error is not None
 
     def test_non_row_returning_statement_succeeds_without_schema(self) -> None:
-        adapter = connect_postgres_or_skip()
+        adapter = connect_postgres()
         try:
             result = adapter.execute("CREATE TEMP TABLE t_cov (x int)")
             assert result.error is None

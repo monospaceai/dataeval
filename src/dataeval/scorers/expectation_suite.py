@@ -64,7 +64,18 @@ class ExpectationSuiteScorer:
                 explanation=f"query execution failed: {result.error}",
             )
 
-        outcomes = [_evaluate_one(e, result, context.queries) for e in expected.expectations]
+        checked = result
+        if result.schema_ is not None and any(isinstance(e, ColumnTypeExpectation) for e in expected.expectations):
+            resolved = context.queries.resolved_schema(result.schema_, context.queries.model_sql)
+            if isinstance(resolved, str):
+                return ScoreResult(
+                    scorer=SCORER_NAME,
+                    passed=False,
+                    explanation=f"could not resolve column types for type comparison: {resolved}",
+                )
+            checked = result.model_copy(update={"schema_": resolved})
+
+        outcomes = [_evaluate_one(e, checked, context.queries) for e in expected.expectations]
         failures = [o for o in outcomes if not o.passed]
         if not failures:
             return ScoreResult(scorer=SCORER_NAME, passed=True, outcomes=outcomes)

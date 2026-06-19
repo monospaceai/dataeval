@@ -43,6 +43,23 @@ class _ProgrammableAdapter:
     def close(self) -> None: ...
 
 
+class _TypeProbeFailingAdapter:
+    """A `TypeResolvingAdapter` whose type probe errors, exercising the resolve-failure path."""
+
+    def execute(self, sql: str) -> ExecutionResult:
+        return ExecutionResult(rows=[], latency_seconds=0.0, error="probe boom")
+
+    def cancel(self) -> None: ...
+
+    def close(self) -> None: ...
+
+    def type_probe_sql(self, sql: str) -> str:
+        return f"PROBE {sql}"
+
+    def types_from_probe(self, rows: list[dict[str, object]]) -> list[SqlType] | str:
+        return [SqlType.parse("INTEGER", "duckdb") for _ in rows]
+
+
 def _ctx(*results: ExecutionResult) -> ScoreContext:
     """Build a `ScoreContext` whose runner replays `results` in order for derived queries."""
     runner = QueryRunner(_ProgrammableAdapter(list(results)), Sql("SELECT * FROM m"), "duckdb", None)
@@ -174,6 +191,19 @@ class TestColumnType:
         assert _sole(score) == ExpectationOutcome(
             kind="column_type", passed=True, column="n", expected="BIGINT", actual="BIGINT", detail=None
         )
+
+    def test_resolution_failure_is_reported(self) -> None:
+        case = _suite(ColumnTypeExpectation(column="n", expected_type="DECIMAL(10,2)"))
+        result = ExecutionResult(
+            rows=[{"n": 1}],
+            schema=[Column(name="n", type=SqlType.parse("DECIMAL", "duckdb"))],
+            latency_seconds=0.0,
+        )
+        runner = QueryRunner(_TypeProbeFailingAdapter(), Sql("SELECT * FROM m"), "duckdb", None)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=ScoreContext(queries=runner))
+        assert score.passed is False
+        assert score.explanation is not None
+        assert "could not resolve column types for type comparison: probe boom" in score.explanation
 
     def test_pass_aliased_type(self) -> None:
         # INT8 and BIGINT canonicalise to the same duckdb type.

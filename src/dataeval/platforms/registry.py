@@ -36,6 +36,38 @@ def postgres_platform(name: str, conninfo: str = "") -> PlatformRef:
     return PlatformRef(name=name, kind="postgres", config={"conninfo": conninfo})
 
 
+def databricks_platform(
+    name: str,
+    *,
+    server_hostname: str,
+    http_path: str,
+    catalog: str | None = None,
+    schema: str | None = None,
+) -> PlatformRef:
+    """Build a `PlatformRef` for a Databricks SQL Warehouse.
+
+    Holds only non-secret connection details; credentials resolve from the ambient
+    environment through the Databricks SDK's unified authentication.
+
+    Args:
+        name: A unique name identifying this platform connection.
+        server_hostname: The workspace hostname (no scheme), e.g. `dbc-xxxx.cloud.databricks.com`.
+        http_path: The SQL Warehouse HTTP path, e.g. `/sql/1.0/warehouses/<id>`.
+        catalog: The default catalog, or `None` to leave the session default.
+        schema: The default schema, or `None` to leave the session default.
+
+    Returns:
+        A serializable `PlatformRef` for the Databricks warehouse. Building the ref needs no
+        driver.
+    """
+    config: dict[str, str] = {"server_hostname": server_hostname, "http_path": http_path}
+    if catalog is not None:
+        config["catalog"] = catalog
+    if schema is not None:
+        config["schema"] = schema
+    return PlatformRef(name=name, kind="databricks", dialect="databricks", config=config)
+
+
 def _build_duckdb(ref: PlatformRef) -> PlatformAdapter:
     return DuckDBAdapter(database=str(ref.config.get("path", ":memory:")))
 
@@ -47,6 +79,22 @@ def _build_postgres(ref: PlatformRef) -> PlatformAdapter:
         msg = "PostgresAdapter requires the 'postgres' extra; install it with `uv sync --extra postgres`"
         raise RuntimeError(msg) from e
     return PostgresAdapter(conninfo=str(ref.config.get("conninfo", "")))
+
+
+def _build_databricks(ref: PlatformRef) -> PlatformAdapter:
+    try:
+        from dataeval.platforms.databricks import DatabricksAdapter
+    except ImportError as e:
+        msg = "DatabricksAdapter requires the 'databricks' extra; install it with `uv sync --extra databricks`"
+        raise RuntimeError(msg) from e
+    catalog = ref.config.get("catalog")
+    schema = ref.config.get("schema")
+    return DatabricksAdapter(
+        server_hostname=str(ref.config["server_hostname"]),
+        http_path=str(ref.config["http_path"]),
+        catalog=str(catalog) if catalog is not None else None,
+        schema=str(schema) if schema is not None else None,
+    )
 
 
 def _build(ref: PlatformRef) -> PlatformAdapter:
@@ -64,6 +112,8 @@ def _build(ref: PlatformRef) -> PlatformAdapter:
             return _build_duckdb(ref)
         case "postgres":
             return _build_postgres(ref)
+        case "databricks":
+            return _build_databricks(ref)
         case _ as unreachable:  # pragma: no cover - exhaustiveness guard
             assert_never(unreachable)
 

@@ -109,9 +109,14 @@ class ResultSetEquivalence:
             return source
 
         config = case.comparison
-        actual_names = _column_names(result.schema_, result.rows)
+        actual_schema = result.schema_
+        if isinstance(expected, TypedResultSet) and actual_schema is not None:
+            actual_schema = context.queries.resolved_schema(actual_schema, context.queries.model_sql)
+            if isinstance(actual_schema, str):
+                return _failure(f"could not resolve column types for type comparison: {actual_schema}")
+        actual_names = _column_names(actual_schema, result.rows)
         columns = reconcile_columns(actual_names, source.names, config.column_order)
-        type_mismatches = _type_mismatches(result.schema_, source.schema_, columns.in_both)
+        type_mismatches = _type_mismatches(actual_schema, source.schema_, columns.in_both)
 
         if config.match_key:
             return _keyed_score(source, result, columns, type_mismatches, config, context.queries)

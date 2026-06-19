@@ -5,9 +5,21 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import pytest
+import sqlglot
 
 from dataeval.platforms.base import PlatformAdapter
 from dataeval.platforms.duckdb import DuckDBAdapter
+from dataeval.scorers.sql import Dialect
+
+
+def render_model(base: str, dialect: Dialect) -> str:
+    """Render a conformance model query, authored in Postgres SQL, for `dialect`.
+
+    Conformance models are executed raw, not through the scorer's renderer, so engine syntax
+    divergences are transpiled per dialect from one authored base. Divergences transpilation
+    can't infer (a bare `NUMERIC`'s scale) are authored per dialect at the call site instead.
+    """
+    return sqlglot.transpile(base, read="postgres", write=dialect)[0]
 
 
 class ConformanceFixtures(Protocol):
@@ -68,6 +80,25 @@ class PostgresFixtures:
 
 
 @dataclass(frozen=True)
+class DatabricksFixtures:
+    """Databricks SQL Warehouse's concrete `ConformanceFixtures` — Spark SQL idiom.
+
+    `range(...)` is Spark's table-valued generator (column `id`); the `slow_query` cross-joins
+    two ranges under a row-forcing predicate so the count cannot be shortcut from cardinalities,
+    overrunning a sub-second budget while remaining interruptible.
+    """
+
+    one_row_one_column: str = "SELECT 1 AS n"
+    empty_result: str = "SELECT 1 AS n WHERE false"
+    three_rows: str = "SELECT n FROM (VALUES (1), (2), (3)) AS t(n)"
+    null_value: str = "SELECT NULL AS x"
+    duplicate_column_names: str = "SELECT 1 AS x, 2 AS x"
+    references_missing_table: str = "SELECT * FROM does_not_exist_xyz"
+    parse_error: str = "SLECT 1"
+    slow_query: str = "SELECT count(*) AS n FROM range(0, 50000) a CROSS JOIN range(0, 50000) b WHERE a.id + b.id > -1"
+
+
+@dataclass(frozen=True)
 class UnderTest:
     """One adapter-under-test: its live `PlatformAdapter` + the SQL it uses."""
 
@@ -93,28 +124,37 @@ def _postgres_dsn() -> str:
     return f"host={host} port={port} user={user} password={password} dbname={dbname}"
 
 
-def connect_postgres_or_skip() -> PlatformAdapter:
-    """Connect a `PostgresAdapter` to the configured test database, or skip the test.
+def connect_postgres() -> PlatformAdapter:
+    """Connect a `PostgresAdapter` to the configured test database.
 
-    Skips (rather than fails) when the `postgres` extra is not installed or no
-    Postgres is reachable — keeping `pytest` green for contributors without one,
-    while CI runs these via `-m e2e` against a service container. Shared by the
-    `postgres` conformance param and `test_postgres.py`'s native-type tests.
+    Fail-loud: a missing extra or unreachable database raises rather than skipping.
     """
-    try:
-        from dataeval.platforms.postgres import PostgresAdapter
-    except ImportError:
-        pytest.skip("psycopg not installed; install the 'postgres' extra (uv sync --extra postgres)")
-    import psycopg
+    from dataeval.platforms.postgres import PostgresAdapter
 
-    try:
-        return PostgresAdapter(_postgres_dsn())
-    except psycopg.OperationalError as e:
-        pytest.skip(f"Postgres not reachable ({_postgres_dsn()}): {e}".strip())
+    return PostgresAdapter(_postgres_dsn())
 
 
 def _postgres_under_test() -> UnderTest:
-    return UnderTest(adapter=connect_postgres_or_skip(), fixtures=PostgresFixtures())
+    return UnderTest(adapter=connect_postgres(), fixtures=PostgresFixtures())
+
+
+def connect_databricks() -> PlatformAdapter:
+    """Connect a `DatabricksAdapter` to the configured workspace.
+
+    Reads `DATABRICKS_SERVER_HOSTNAME` and `DATABRICKS_HTTP_PATH`; credentials resolve from
+    the ambient environment via the Databricks SDK. Fail-loud: a missing extra, unset
+    connection details, or an unreachable workspace raises rather than skipping.
+    """
+    from dataeval.platforms.databricks import DatabricksAdapter
+
+    return DatabricksAdapter(
+        server_hostname=os.environ["DATABRICKS_SERVER_HOSTNAME"],
+        http_path=os.environ["DATABRICKS_HTTP_PATH"],
+    )
+
+
+def _databricks_under_test() -> UnderTest:
+    return UnderTest(adapter=connect_databricks(), fixtures=DatabricksFixtures())
 
 
 # Function-scoped: each test gets a fresh adapter.
@@ -122,6 +162,7 @@ def _postgres_under_test() -> UnderTest:
     params=[
         pytest.param(_duckdb_under_test, id="duckdb", marks=pytest.mark.unit),
         pytest.param(_postgres_under_test, id="postgres", marks=pytest.mark.e2e),
+        pytest.param(_databricks_under_test, id="databricks", marks=[pytest.mark.e2e, pytest.mark.cloud]),
     ],
 )
 def under_test(request: pytest.FixtureRequest) -> UnderTest:

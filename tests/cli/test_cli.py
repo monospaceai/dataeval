@@ -106,8 +106,18 @@ class TestDoctor:
 
     def test_covers_every_supported_kind(self) -> None:
         # Builds refs only — no connection attempted.
-        refs = _build_refs(duckdb=":memory:", postgres="")
+        refs = _build_refs(
+            duckdb=":memory:",
+            postgres="",
+            databricks_server_hostname="h",
+            databricks_http_path="/sql/1.0/warehouses/abc",
+        )
         assert {ref.kind for ref in refs} == set(get_args(PlatformKind))
+
+    def test_databricks_flags_required_together(self) -> None:
+        result = runner.invoke(app, ["doctor", "--databricks-server-hostname", "h"])
+        assert result.exit_code == 2
+        assert "together" in result.output
 
 
 _EVAL_TEST = """

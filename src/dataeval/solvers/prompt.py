@@ -27,8 +27,8 @@ class SqlOutput(BaseModel):
 def _extract_structured_sql(content: str | None) -> Sql | SolverError:
     """Parse a structured `{sql: ...}` reply, returning the SQL or a typed error.
 
-    Empty or absent content is normalised to `{}` so a missing reply surfaces as the same
-    schema-validation failure as malformed JSON, rather than being special-cased.
+    Empty or absent content normalises to `{}`, so a missing reply fails validation like
+    malformed JSON.
 
     Args:
         content: The raw model reply, expected to be a JSON object matching `SqlOutput`.
@@ -95,11 +95,8 @@ class PromptSolver:
     def solve(self, case: EvalCase) -> SolverOutput:
         """Produce SQL for `case`, returning a success or a typed `SolverError`.
 
-        Renders the prompt from the case's dialect (or platform kind) and input, calls the
-        model, and extracts the SQL. When the model supports structured outputs the SQL is
-        requested in a typed field and read back directly; otherwise it is recovered from the
-        reply text by stripping a Markdown code fence. Expected provider failures are mapped
-        to a `SolverError` and returned as `SolverOutput.error` (errors-as-values).
+        Renders the prompt, calls the model, and extracts the SQL. Expected provider failures
+        are mapped to a `SolverError` and returned as `SolverOutput.error` (errors-as-values).
 
         Args:
             case: The eval case to solve.

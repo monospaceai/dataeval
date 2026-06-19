@@ -7,6 +7,11 @@ test-cov *args:
     uv run coverage combine
     uv run coverage report
 
+# `cloud` e2e against credentialed hosted backends (Databricks, …). Needs secrets in the env;
+# run in a fork-gated CI job, not part of the default `check`.
+test-cloud *args:
+    uv run --all-extras pytest -m cloud {{args}}
+
 lint:
     uv run ruff check
     uv run ruff format --check
@@ -24,7 +29,9 @@ precommit:
 build:
     uv build
 
-check: lint typecheck test-cov
+# Everyday gate: excludes `cloud` (those run in their own fork-gated CI job).
+check: lint typecheck
+    just test-cov '-m "not cloud"'
 
 ci: check build
 

@@ -42,8 +42,7 @@ def test_null_values_round_trip(under_test: UnderTest) -> None:
 
 
 def test_duplicate_output_columns_return_error(under_test: UnderTest) -> None:
-    # Name-keyed rows cannot represent two columns sharing a name; the adapter surfaces
-    # this as an error rather than silently dropping the colliding column.
+    # Name-keyed rows cannot represent two columns sharing a name.
     result = under_test.adapter.execute(under_test.fixtures.duplicate_column_names)
     assert result.error is not None
     assert "duplicate" in result.error
@@ -86,8 +85,7 @@ def test_query_within_budget_returns_result(under_test: UnderTest) -> None:
 
 
 def test_query_exceeding_budget_is_cancelled(under_test: UnderTest) -> None:
-    # A query that overruns the budget is aborted via adapter.cancel() and surfaced as an
-    # error rather than blocking for its full runtime.
+    # An overrunning query is surfaced as an error rather than blocking for its full runtime.
     result = execute_within_budget(under_test.adapter, under_test.fixtures.slow_query, max_seconds=0.5)
     assert result.error is not None
     assert "budget" in result.error

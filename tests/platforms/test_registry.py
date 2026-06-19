@@ -1,12 +1,13 @@
 """Unit tests for platform-ref builders and `PlatformRef` -> adapter resolution."""
 
 import sys
+import types
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from dataeval.platforms import duckdb_platform, postgres_platform, resolve
+from dataeval.platforms import databricks_platform, duckdb_platform, postgres_platform, resolve
 from dataeval.platforms.registry import close_all
 from dataeval.types import PlatformRef
 
@@ -23,6 +24,19 @@ class TestRefBuilders:
     def test_postgres_platform_builds_ref(self) -> None:
         ref = postgres_platform(name="warehouse", conninfo="host=db")
         assert ref == PlatformRef(name="warehouse", kind="postgres", config={"conninfo": "host=db"})
+
+    def test_databricks_platform_builds_ref(self) -> None:
+        ref = databricks_platform(name="wh", server_hostname="h.databricks.com", http_path="/sql/1.0/warehouses/abc")
+        assert ref == PlatformRef(
+            name="wh",
+            kind="databricks",
+            dialect="databricks",
+            config={"server_hostname": "h.databricks.com", "http_path": "/sql/1.0/warehouses/abc"},
+        )
+
+    def test_databricks_platform_includes_catalog_and_schema_when_set(self) -> None:
+        ref = databricks_platform(name="wh", server_hostname="h", http_path="/p", catalog="main", schema="sales")
+        assert ref.config == {"server_hostname": "h", "http_path": "/p", "catalog": "main", "schema": "sales"}
 
 
 @pytest.mark.unit
@@ -62,15 +76,36 @@ class TestResolve:
         with pytest.raises(RuntimeError, match="requires the 'postgres' extra"):
             resolve(postgres_platform(name="pg-missing-extra", conninfo=""))
 
+    def test_databricks_extra_missing_raises_runtime_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Simulate the 'databricks' extra not being installed: importing the adapter fails.
+        monkeypatch.setitem(sys.modules, "dataeval.platforms.databricks", None)
+        with pytest.raises(RuntimeError, match="requires the 'databricks' extra"):
+            resolve(databricks_platform(name="dbx-missing-extra", server_hostname="h", http_path="/p"))
+
+    def test_resolves_databricks_through_registry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Mock the connector so the registry's databricks dispatch builds an adapter without a
+        # live workspace.
+        from dataeval.platforms.databricks import DatabricksAdapter
+
+        monkeypatch.setattr("databricks.sql.connect", lambda **kwargs: types.SimpleNamespace(close=lambda: None))
+        monkeypatch.setattr("dataeval.platforms.databricks.Config", lambda host: object())
+        adapter = resolve(
+            databricks_platform(name="dbx-build", server_hostname="h", http_path="/p", catalog="main", schema="sales")
+        )
+        try:
+            assert isinstance(adapter, DatabricksAdapter)
+        finally:
+            close_all()
+
 
 @pytest.mark.e2e
 class TestResolvePostgres:
     """`resolve` builds a live PostgresAdapter through the registry's postgres dispatch."""
 
     def test_resolves_and_executes_postgres(self) -> None:
-        from .conftest import _postgres_dsn, connect_postgres_or_skip
+        from .conftest import _postgres_dsn, connect_postgres
 
-        connect_postgres_or_skip().close()  # skip unless a Postgres is reachable
+        connect_postgres().close()  # fail early if Postgres is unreachable
         adapter = resolve(postgres_platform(name="registry-pg-e2e", conninfo=_postgres_dsn()))
         try:
             result = adapter.execute("SELECT 1 AS n")

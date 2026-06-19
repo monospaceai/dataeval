@@ -29,7 +29,20 @@ from dataeval.types import (
     TypedResultSet,
 )
 
-from .conftest import connect_postgres_or_skip
+from .conftest import connect_databricks, connect_postgres, render_model
+
+
+def _string_type(dialect: Dialect) -> str:
+    """The string type name to author so it matches what the engine reports: `STRING` on
+    Databricks (whose `VARCHAR` resolves to `string`), `VARCHAR` on DuckDB/Postgres."""
+    return "STRING" if dialect == "databricks" else "VARCHAR"
+
+
+def _numeric_type(dialect: Dialect) -> str:
+    """A scale-bearing fixed-point type: `DECIMAL(10, 2)` on Databricks, whose bare `DECIMAL`
+    is `DECIMAL(10, 0)` and truncates the scale; `NUMERIC` on DuckDB/Postgres, which report
+    it bare so the authored type must mirror that."""
+    return "DECIMAL(10, 2)" if dialect == "databricks" else "NUMERIC"
 
 
 def _duckdb_engine() -> tuple[PlatformAdapter, Dialect]:
@@ -37,17 +50,22 @@ def _duckdb_engine() -> tuple[PlatformAdapter, Dialect]:
 
 
 def _postgres_engine() -> tuple[PlatformAdapter, Dialect]:
-    return connect_postgres_or_skip(), "postgres"
+    return connect_postgres(), "postgres"
+
+
+def _databricks_engine() -> tuple[PlatformAdapter, Dialect]:
+    return connect_databricks(), "databricks"
 
 
 @pytest.fixture(
     params=[
         pytest.param(_duckdb_engine, id="duckdb", marks=pytest.mark.unit),
         pytest.param(_postgres_engine, id="postgres", marks=pytest.mark.e2e),
+        pytest.param(_databricks_engine, id="databricks", marks=[pytest.mark.e2e, pytest.mark.cloud]),
     ],
 )
 def engine(request: pytest.FixtureRequest) -> tuple[PlatformAdapter, Dialect]:
-    """An (adapter, dialect) pair, parametrised across DuckDB (unit) and Postgres (e2e)."""
+    """An (adapter, dialect) pair, parametrised across DuckDB (unit), Postgres (e2e), and Databricks (cloud)."""
     return request.param()
 
 
@@ -59,8 +77,8 @@ def _score(
 ) -> ScoreResult:
     """Run the model through the adapter, then score its result against `expected`."""
     adapter, dialect = engine
-    model_sql = Sql(model)
-    kind = "postgres" if dialect == "postgres" else "duckdb"
+    model_sql = Sql(render_model(model, dialect))
+    kind = dialect if dialect in ("postgres", "databricks") else "duckdb"
     case = EvalCase(
         id="c",
         input="q",
@@ -166,8 +184,9 @@ def test_outside_tolerance_fails(engine: tuple[PlatformAdapter, Dialect]) -> Non
 
 def test_typed_value_no_string_vs_number_false_mismatch(engine: tuple[PlatformAdapter, Dialect]) -> None:
     _, dialect = engine
-    expected = TypedResultSet(rows=[{"price": Decimal("2.50")}], schema=_schema(("price", "NUMERIC"), dialect=dialect))
-    score = _score(engine, "SELECT CAST(2.50 AS NUMERIC) AS price", expected)
+    numeric = _numeric_type(dialect)
+    expected = TypedResultSet(rows=[{"price": Decimal("2.50")}], schema=_schema(("price", numeric), dialect=dialect))
+    score = _score(engine, f"SELECT CAST(2.50 AS {numeric}) AS price", expected)
     assert score.passed is True
 
 
@@ -306,15 +325,21 @@ def test_keyed_distinct_null_value_is_mismatch(engine: tuple[PlatformAdapter, Di
 
 def test_keyed_tolerance_at_band_boundary_passes(engine: tuple[PlatformAdapter, Dialect]) -> None:
     _, dialect = engine
-    expected = TypedResultSet(rows=[{"id": 1, "v": Decimal("10.0")}], schema=_id_v_schema(dialect, "NUMERIC"))
-    score = _score(engine, "SELECT 1 AS id, CAST(10.5 AS NUMERIC) AS v", expected, _keyed(["id"], float_tolerance=0.5))
+    numeric = _numeric_type(dialect)
+    expected = TypedResultSet(rows=[{"id": 1, "v": Decimal("10.0")}], schema=_id_v_schema(dialect, numeric))
+    score = _score(
+        engine, f"SELECT 1 AS id, CAST(10.5 AS {numeric}) AS v", expected, _keyed(["id"], float_tolerance=0.5)
+    )
     assert score.passed is True
 
 
 def test_keyed_tolerance_just_over_band_fails(engine: tuple[PlatformAdapter, Dialect]) -> None:
     _, dialect = engine
-    expected = TypedResultSet(rows=[{"id": 1, "v": Decimal("10.0")}], schema=_id_v_schema(dialect, "NUMERIC"))
-    score = _score(engine, "SELECT 1 AS id, CAST(10.51 AS NUMERIC) AS v", expected, _keyed(["id"], float_tolerance=0.5))
+    numeric = _numeric_type(dialect)
+    expected = TypedResultSet(rows=[{"id": 1, "v": Decimal("10.0")}], schema=_id_v_schema(dialect, numeric))
+    score = _score(
+        engine, f"SELECT 1 AS id, CAST(10.51 AS {numeric}) AS v", expected, _keyed(["id"], float_tolerance=0.5)
+    )
     assert score.passed is False
     assert score.diff is not None
     assert len(score.diff.column_mismatches) == 1
@@ -323,7 +348,7 @@ def test_keyed_tolerance_just_over_band_fails(engine: tuple[PlatformAdapter, Dia
 
 def test_keyed_composite_key_passes(engine: tuple[PlatformAdapter, Dialect]) -> None:
     _, dialect = engine
-    schema = _schema(("a", "INTEGER"), ("b", "VARCHAR"), ("v", "INTEGER"), dialect=dialect)
+    schema = _schema(("a", "INTEGER"), ("b", _string_type(dialect)), ("v", "INTEGER"), dialect=dialect)
     expected = TypedResultSet(rows=[{"a": 1, "b": "x", "v": 10}, {"a": 1, "b": "y", "v": 20}], schema=schema)
     model = "SELECT 1 AS a, CAST('x' AS VARCHAR) AS b, 10 AS v UNION ALL SELECT 1, CAST('y' AS VARCHAR), 20"
     score = _score(engine, model, expected, _keyed(["a", "b"]))
@@ -334,7 +359,7 @@ def test_keyed_null_in_key_does_not_align(engine: tuple[PlatformAdapter, Dialect
     # A NULL in a key column is not a valid identifier: it never aligns under `=`, so the
     # expected row is missing and the actual row is extra (dbt audit_helper semantics).
     _, dialect = engine
-    schema = _schema(("a", "INTEGER"), ("b", "VARCHAR"), ("v", "INTEGER"), dialect=dialect)
+    schema = _schema(("a", "INTEGER"), ("b", _string_type(dialect)), ("v", "INTEGER"), dialect=dialect)
     expected = TypedResultSet(rows=[{"a": 1, "b": None, "v": 10}], schema=schema)
     score = _score(engine, "SELECT 1 AS a, CAST(NULL AS VARCHAR) AS b, 10 AS v", expected, _keyed(["a", "b"]))
     assert score.passed is False
@@ -396,7 +421,7 @@ def test_keyed_derived_query_error_fails_without_raise(engine: tuple[PlatformAda
 
 def test_keyed_non_numeric_value_equal_compares_per_column(engine: tuple[PlatformAdapter, Dialect]) -> None:
     _, dialect = engine
-    schema = _schema(("id", "INTEGER"), ("name", "VARCHAR"), dialect=dialect)
+    schema = _schema(("id", "INTEGER"), ("name", _string_type(dialect)), dialect=dialect)
     expected = TypedResultSet(rows=[{"id": 1, "name": "alice"}, {"id": 2, "name": "bob"}], schema=schema)
     model = "SELECT 1 AS id, CAST('alice' AS VARCHAR) AS name UNION ALL SELECT 2, CAST('wrong' AS VARCHAR)"
     score = _score(engine, model, expected, _keyed(["id"]))
@@ -411,7 +436,7 @@ def test_keyed_non_numeric_value_equal_compares_per_column(engine: tuple[Platfor
 
 def test_keyed_non_numeric_distinct_null_value_is_mismatch(engine: tuple[PlatformAdapter, Dialect]) -> None:
     _, dialect = engine
-    schema = _schema(("id", "INTEGER"), ("name", "VARCHAR"), dialect=dialect)
+    schema = _schema(("id", "INTEGER"), ("name", _string_type(dialect)), dialect=dialect)
     expected = TypedResultSet(rows=[{"id": 1, "name": None}], schema=schema)
     model = "SELECT 1 AS id, CAST(NULL AS VARCHAR) AS name"
     score = _score(engine, model, expected, _keyed(["id"], null_equality="distinct"))
@@ -423,7 +448,7 @@ def test_keyed_non_numeric_distinct_null_value_is_mismatch(engine: tuple[Platfor
 
 def test_keyed_non_numeric_equal_null_value_passes(engine: tuple[PlatformAdapter, Dialect]) -> None:
     _, dialect = engine
-    schema = _schema(("id", "INTEGER"), ("name", "VARCHAR"), dialect=dialect)
+    schema = _schema(("id", "INTEGER"), ("name", _string_type(dialect)), dialect=dialect)
     expected = TypedResultSet(rows=[{"id": 1, "name": None}], schema=schema)
     model = "SELECT 1 AS id, CAST(NULL AS VARCHAR) AS name"
     score = _score(engine, model, expected, _keyed(["id"]))

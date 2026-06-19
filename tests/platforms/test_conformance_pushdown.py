@@ -27,7 +27,7 @@ from dataeval.types import (
     UniqueExpectation,
 )
 
-from .conftest import connect_postgres_or_skip
+from .conftest import connect_databricks, connect_postgres, render_model
 
 
 def _duckdb_engine() -> tuple[PlatformAdapter, Dialect]:
@@ -35,17 +35,22 @@ def _duckdb_engine() -> tuple[PlatformAdapter, Dialect]:
 
 
 def _postgres_engine() -> tuple[PlatformAdapter, Dialect]:
-    return connect_postgres_or_skip(), "postgres"
+    return connect_postgres(), "postgres"
+
+
+def _databricks_engine() -> tuple[PlatformAdapter, Dialect]:
+    return connect_databricks(), "databricks"
 
 
 @pytest.fixture(
     params=[
         pytest.param(_duckdb_engine, id="duckdb", marks=pytest.mark.unit),
         pytest.param(_postgres_engine, id="postgres", marks=pytest.mark.e2e),
+        pytest.param(_databricks_engine, id="databricks", marks=[pytest.mark.e2e, pytest.mark.cloud]),
     ],
 )
 def engine(request: pytest.FixtureRequest) -> tuple[PlatformAdapter, Dialect]:
-    """An (adapter, dialect) pair, parametrised across DuckDB (unit) and Postgres (e2e)."""
+    """An (adapter, dialect) pair, parametrised across DuckDB (unit), Postgres (e2e), and Databricks (cloud)."""
     return request.param()
 
 
@@ -62,12 +67,12 @@ def _outcome(
     (which read the model result's schema, not the warehouse) see the checked column.
     """
     adapter, dialect = engine
-    model_sql = Sql(model)
+    model_sql = Sql(render_model(model, dialect))
     case = EvalCase(
         id="c",
         input="q",
         expected=ExpectationSuite(expectations=[expectation]),
-        platform=PlatformRef(name="x", kind="postgres" if dialect == "postgres" else "duckdb"),
+        platform=PlatformRef(name="x", kind=dialect if dialect in ("postgres", "databricks") else "duckdb"),
     )
     queries = QueryRunner(adapter, model_sql, dialect, None)
     schema = [Column(name=name, type=SqlType.parse("INTEGER", dialect)) for name in (columns or [])] or None

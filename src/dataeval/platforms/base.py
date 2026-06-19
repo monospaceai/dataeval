@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Protocol, runtime_checkable
 
-from dataeval.types import Column, ExecutionResult, Schema
+from dataeval.types import Column, ExecutionResult, Schema, SqlType
 
 
 @runtime_checkable
@@ -31,15 +31,50 @@ class PlatformAdapter(Protocol):
     def cancel(self) -> None:
         """Abort the query currently executing on this connection, if any.
 
-        Called from another thread when an `execute` overruns its time budget, so it must
-        be safe to invoke while `execute` is blocked. A no-op when no query is running, and
-        best-effort: it must not raise — a cancellation that fails or arrives late is
-        non-fatal (the overrun is still surfaced as `ExecutionResult.error`).
+        Must be safe to call from another thread while `execute` is blocked. A no-op when no
+        query is running, and best-effort: it must not raise — a cancellation that fails or
+        arrives late is non-fatal.
         """
         ...
 
     def close(self) -> None:
-        """Release the underlying connection/resources. Called once at session end."""
+        """Release the underlying connection/resources."""
+        ...
+
+
+@runtime_checkable
+class TypeResolvingAdapter(Protocol):
+    """Capability for backends whose `execute().schema_` reports types with unresolved parameters.
+
+    Implemented only by adapters whose driver drops type parameters (e.g. a `DECIMAL` scale
+    or an `ARRAY` element type); precise backends do not implement it. Both methods must be
+    pure (no I/O): one produces the SQL that probes for precise types, the other interprets
+    that probe's result rows. The caller runs the probe.
+    """
+
+    def type_probe_sql(self, sql: str) -> str:
+        """Build the probe statement that recovers precise types for `sql`'s projection.
+
+        Args:
+            sql: The statement whose projected column types to resolve.
+
+        Returns:
+            A probe statement for the caller to execute; its rows feed `types_from_probe`.
+        """
+        ...
+
+    def types_from_probe(self, rows: list[dict[str, Any]]) -> list[SqlType] | str:
+        """Parse the probe's result rows into precise `SqlType`s, one per projected column.
+
+        They must be returned in the order the query projects its columns.
+
+        Args:
+            rows: The rows returned by executing `type_probe_sql`, in projection order.
+
+        Returns:
+            One precise `SqlType` per projected column, in order, or an error string when the
+            rows cannot yield types (errors-as-values).
+        """
         ...
 
 

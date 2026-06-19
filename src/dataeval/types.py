@@ -14,7 +14,7 @@ from sqlglot.errors import SqlglotError
 Sql = NewType("Sql", str)
 
 # The supported set: dispatch over this Literal is exhaustively type-checked (match/assert_never).
-PlatformKind = Literal["duckdb", "postgres"]
+PlatformKind = Literal["duckdb", "postgres", "databricks"]
 
 SQLDialect = Literal[
     "snowflake",
@@ -180,8 +180,8 @@ class TypedResultSet(BaseModel):
 class GoldQuery(BaseModel):
     """Expected outcome as a gold/reference query whose executed result IS the expected answer.
 
-    Comparison is execution-based: a scorer runs `sql` against the case's platform and diffs
-    its result set against the model's, rather than comparing literal rows authored up front.
+    The expected answer is whatever `sql` returns when executed, not literal rows authored
+    up front.
     """
 
     model_config = ConfigDict(extra="forbid")

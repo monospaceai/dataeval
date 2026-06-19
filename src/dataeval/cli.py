@@ -9,7 +9,13 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from dataeval.platforms.registry import close_all, duckdb_platform, postgres_platform, resolve
+from dataeval.platforms.registry import (
+    close_all,
+    databricks_platform,
+    duckdb_platform,
+    postgres_platform,
+    resolve,
+)
 from dataeval.types import PlatformRef
 
 app = typer.Typer(help="AI evals for data & analytics engineering teams.", no_args_is_help=True)
@@ -46,24 +52,41 @@ def run(
     raise typer.Exit(completed.returncode)
 
 
-def _build_refs(*, duckdb: str | None, postgres: str | None) -> list[PlatformRef]:
+def _build_refs(
+    *,
+    duckdb: str | None,
+    postgres: str | None,
+    databricks_server_hostname: str | None = None,
+    databricks_http_path: str | None = None,
+) -> list[PlatformRef]:
     """Build a `PlatformRef` for each platform flag that was provided.
 
     Each branch routes through the typed registry builder, so a flag can only ever name a
-    real `PlatformKind`.
+    real `PlatformKind`. The Databricks ref is built only when both its server hostname and
+    HTTP path are given (it has no single-value form).
 
     Args:
         duckdb: A DuckDB database path, or `None` if the flag was not given.
         postgres: A PostgreSQL conninfo, or `None` if the flag was not given.
+        databricks_server_hostname: A Databricks workspace hostname, or `None`.
+        databricks_http_path: A Databricks SQL Warehouse HTTP path, or `None`.
 
     Returns:
-        One `PlatformRef` per flag that was provided, in flag order.
+        One `PlatformRef` per platform whose flag(s) were provided, in flag order.
     """
     refs: list[PlatformRef] = []
     if duckdb is not None:
         refs.append(duckdb_platform(name="duckdb", path=duckdb))
     if postgres is not None:
         refs.append(postgres_platform(name="postgres", conninfo=postgres))
+    if databricks_server_hostname is not None and databricks_http_path is not None:
+        refs.append(
+            databricks_platform(
+                name="databricks",
+                server_hostname=databricks_server_hostname,
+                http_path=databricks_http_path,
+            )
+        )
     return refs
 
 
@@ -103,6 +126,20 @@ def doctor(
         envvar="DATA_EVAL_POSTGRES_CONNINFO",
         help='PostgreSQL libpq conninfo to check (empty "" uses PG* env vars / libpq defaults).',
     ),
+    databricks_server_hostname: str | None = typer.Option(
+        None,
+        "--databricks-server-hostname",
+        metavar="HOST",
+        envvar="DATABRICKS_SERVER_HOSTNAME",
+        help="Databricks workspace hostname to check (paired with --databricks-http-path).",
+    ),
+    databricks_http_path: str | None = typer.Option(
+        None,
+        "--databricks-http-path",
+        metavar="PATH",
+        envvar="DATABRICKS_HTTP_PATH",
+        help="Databricks SQL Warehouse HTTP path to check (paired with --databricks-server-hostname).",
+    ),
 ) -> None:
     """Check that the given platform connections work (one --<kind> flag per platform).
 
@@ -110,12 +147,24 @@ def doctor(
         duckdb: A DuckDB database path to check (also read from `DATA_EVAL_DUCKDB_PATH`).
         postgres: A PostgreSQL conninfo to check (also read from
             `DATA_EVAL_POSTGRES_CONNINFO`).
+        databricks_server_hostname: A Databricks workspace hostname to check (also read from
+            `DATABRICKS_SERVER_HOSTNAME`); required together with `databricks_http_path`.
+        databricks_http_path: A Databricks SQL Warehouse HTTP path to check (also read from
+            `DATABRICKS_HTTP_PATH`); required together with `databricks_server_hostname`.
 
     Raises:
-        BadParameter: If no platform flag is provided.
+        BadParameter: If no platform flag is provided, or only one of the two Databricks flags is.
         Exit: With code 1 if any platform connection fails.
     """
-    refs = _build_refs(duckdb=duckdb, postgres=postgres)
+    if (databricks_server_hostname is None) != (databricks_http_path is None):
+        msg = "--databricks-server-hostname and --databricks-http-path must be given together"
+        raise typer.BadParameter(msg)
+    refs = _build_refs(
+        duckdb=duckdb,
+        postgres=postgres,
+        databricks_server_hostname=databricks_server_hostname,
+        databricks_http_path=databricks_http_path,
+    )
     if not refs:
         msg = "specify at least one platform, e.g. --duckdb PATH or --postgres CONNINFO"
         raise typer.BadParameter(msg)

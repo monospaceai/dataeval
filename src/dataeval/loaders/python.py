@@ -10,12 +10,11 @@ from dataeval.types import ComparisonConfig, CostBudget, EvalCase, Expected, Pla
 
 _TestFn = TypeVar("_TestFn", bound=Callable[..., Any])
 
-# Built once: constructing a TypeAdapter compiles a core schema. Validates a dict into the
-# discriminated `Expected` union (dispatch on "kind").
+# Built once; validates a dict into the discriminated `Expected` union.
 _EXPECTED_ADAPTER: TypeAdapter[Expected] = TypeAdapter(Expected)
 
-# Function object -> its EvalCase. Weak keys so a collected test function that goes away
-# takes its entry with it; identity lookup matches what pytest passes as `request.function`.
+# Weak keys so a collected test function that goes away releases its entry; identity
+# lookup matches what pytest passes as `request.function`.
 _CASES: WeakKeyDictionary[Callable[..., Any], EvalCase] = WeakKeyDictionary()
 
 

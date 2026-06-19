@@ -9,6 +9,8 @@ import pytest
 import dataeval
 from dataeval import platforms, solvers
 
+pytestmark = pytest.mark.unit
+
 
 def test_prompt_solver_top_level() -> None:
     from dataeval.solvers.prompt import PromptSolver
@@ -36,6 +38,18 @@ def test_postgres_adapter_not_top_level() -> None:
         _ = dataeval.PostgresAdapter
 
 
+def test_databricks_adapter_subpackage() -> None:
+    from dataeval.platforms.databricks import DatabricksAdapter
+
+    assert platforms.DatabricksAdapter is DatabricksAdapter
+    assert "DatabricksAdapter" in dir(platforms)
+
+
+def test_databricks_adapter_not_top_level() -> None:
+    with pytest.raises(AttributeError):
+        _ = dataeval.DatabricksAdapter
+
+
 def _blocking_import(blocked: str) -> Callable[..., Any]:
     real_import = builtins.__import__
 
@@ -60,6 +74,13 @@ def test_postgres_adapter_missing_psycopg(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(builtins, "__import__", _blocking_import("psycopg"))
     with pytest.raises(ImportError, match=r"dataeval\[postgres\]"):
         platforms.__getattr__("PostgresAdapter")
+
+
+def test_databricks_adapter_missing_databricks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delitem(__import__("sys").modules, "dataeval.platforms.databricks", raising=False)
+    monkeypatch.setattr(builtins, "__import__", _blocking_import("databricks.sql"))
+    with pytest.raises(ImportError, match=r"dataeval\[databricks\]"):
+        platforms.__getattr__("DatabricksAdapter")
 
 
 def test_unknown_attribute_top_level() -> None:

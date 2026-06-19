@@ -571,6 +571,21 @@ wheels = [
 ]
 
 [[package]]
+name = "databricks-sdk"
+version = "0.117.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-auth" },
+    { name = "protobuf" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/86/fe149c523a9181deb3a90ae4e83708f54a6ee80c40ca392cf66ffdf425df/databricks_sdk-0.117.0.tar.gz", hash = "sha256:30a6fc21a8f9c4a41830c43332ae63b38c3679a83ac1bda4734ce7ced114faf1", size = 989404, upload-time = "2026-06-11T18:19:29.034Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/92/4d/3e28a5a1ae9aa42237bd0f4e6b34867b554c046a0f3e7c2ef49fa74800f6/databricks_sdk-0.117.0-py3-none-any.whl", hash = "sha256:bafd588c067ee353c905e56cd2eb37c7eca7a56a4c1b57656621b77208c32f86", size = 936854, upload-time = "2026-06-11T18:19:27.395Z" },
+]
+
+[[package]]
 name = "databricks-sql-connector"
 version = "4.2.6"
 source = { registry = "https://pypi.org/simple" }
@@ -607,6 +622,7 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "databricks-sdk" },
     { name = "databricks-sql-connector" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-bigquery-storage" },
@@ -618,6 +634,7 @@ all = [
     { name = "snowflake-connector-python" },
 ]
 all-platforms = [
+    { name = "databricks-sdk" },
     { name = "databricks-sql-connector" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-bigquery-storage" },
@@ -629,6 +646,7 @@ bigquery = [
     { name = "google-cloud-bigquery-storage" },
 ]
 databricks = [
+    { name = "databricks-sdk" },
     { name = "databricks-sql-connector" },
 ]
 litellm = [
@@ -658,6 +676,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.30.0" },
     { name = "databricks-sql-connector", marker = "extra == 'databricks'", specifier = ">=4.2.6" },
     { name = "dataeval", extras = ["all-platforms", "litellm", "tracing"], marker = "extra == 'all'" },
     { name = "dataeval", extras = ["postgres", "snowflake", "bigquery", "databricks"], marker = "extra == 'all-platforms'" },

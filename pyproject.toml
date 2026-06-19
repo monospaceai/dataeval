@@ -50,6 +50,7 @@ bigquery = [
 ]
 databricks = [
     "databricks-sql-connector>=4.2.6",
+    "databricks-sdk>=0.30.0",
 ]
 litellm = [
     "litellm>=1.85.1",
@@ -151,6 +152,7 @@ addopts = [
 markers = [
     "unit: pure-Python unit tests (no external services)",
     "e2e: end-to-end tests against a real platform",
+    "cloud: e2e against a hosted backend needing secret credentials (Databricks, …); excluded from the default run, run in a fork-gated CI job",
 ]
 
 # ---------------------------------------------------------------------------

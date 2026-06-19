@@ -124,7 +124,7 @@ def not_null_sample(model_sql: Sql, column: str, dialect: Dialect) -> Sql:
     return Sql(query.sql(dialect=dialect))
 
 
-def _duplicates_query(model_sql: Sql, column: str, projection: list[str], dialect: Dialect) -> exp.Select:
+def _duplicates_query(model_sql: Sql, column: str, projection: list[exp.Expression], dialect: Dialect) -> exp.Select:
     """Build the duplicated-values query: non-NULL values grouped, `HAVING count(*) > 1`.
 
     Args:
@@ -157,7 +157,7 @@ def unique_count(model_sql: Sql, column: str, dialect: Dialect) -> Sql:
     Returns:
         The unique-violation count SQL string.
     """
-    inner = _duplicates_query(model_sql, column, [exp.column(column, quoted=True).sql(dialect=dialect)], dialect)
+    inner = _duplicates_query(model_sql, column, [exp.column(column, quoted=True)], dialect)
     outer = exp.select("count(*)").from_(exp.Subquery(this=inner, alias=exp.TableAlias(this=exp.to_identifier("d"))))
     return Sql(outer.sql(dialect=dialect))
 
@@ -173,8 +173,9 @@ def unique_sample(model_sql: Sql, column: str, dialect: Dialect) -> Sql:
     Returns:
         The unique-violation sample SQL string.
     """
-    col = exp.column(column, quoted=True).sql(dialect=dialect)
-    query = _duplicates_query(model_sql, column, [col, "count(*) AS n"], dialect).limit(SAMPLE_LIMIT)
+    col = exp.column(column, quoted=True)
+    counted = exp.Count(this=exp.Star()).as_(exp.to_identifier("n"))
+    query = _duplicates_query(model_sql, column, [col, counted], dialect).limit(SAMPLE_LIMIT)
     return Sql(query.sql(dialect=dialect))
 
 

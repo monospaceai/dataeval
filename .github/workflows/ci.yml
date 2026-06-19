@@ -6,7 +6,7 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -65,13 +65,41 @@ jobs:
         env:
           DATA_EVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
 
+  # Credentialed `cloud` e2e (Databricks). Runs on push to main and on same-repo (non-fork)
+  # PRs — fork PRs can't access secrets, so it's skipped for them and `check` treats that as
+  # OK. A missing/expired secret makes the connection fail loudly, blocking the merge.
+  databricks-e2e:
+    name: databricks-e2e
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Run Databricks cloud e2e
+        run: just test-cloud
+        env:
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+  # Single required status check. Require only this in branch protection: it covers the matrix
+  # and the cloud e2e (a fork-skipped cloud job counts as OK; a real failure does not).
   check:
     if: always()
-    needs: [ci]
+    needs: [ci, databricks-e2e]
     runs-on: ubuntu-latest
     steps:
       - run: |
           if [ "${{ needs.ci.result }}" != "success" ]; then
             echo "ci result: ${{ needs.ci.result }}"
+            exit 1
+          fi
+          if [ "${{ needs.databricks-e2e.result }}" != "success" ] && [ "${{ needs.databricks-e2e.result }}" != "skipped" ]; then
+            echo "databricks-e2e result: ${{ needs.databricks-e2e.result }}"
             exit 1
           fi

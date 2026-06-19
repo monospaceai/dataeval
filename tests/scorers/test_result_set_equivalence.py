@@ -40,6 +40,23 @@ class _ScriptedAdapter:
     def close(self) -> None: ...
 
 
+class _TypeProbeFailingAdapter:
+    """A `TypeResolvingAdapter` whose type probe errors, exercising the resolve-failure path."""
+
+    def execute(self, sql: str) -> ExecutionResult:
+        return _err("probe boom")
+
+    def cancel(self) -> None: ...
+
+    def close(self) -> None: ...
+
+    def type_probe_sql(self, sql: str) -> str:
+        return f"PROBE {sql}"
+
+    def types_from_probe(self, rows: list[dict[str, object]]) -> list[SqlType] | str:
+        return [SqlType.parse("INTEGER", "duckdb") for _ in rows]
+
+
 def _count(value: int) -> ExecutionResult:
     return ExecutionResult(rows=[{"c": value}], latency_seconds=0.0)
 
@@ -143,6 +160,20 @@ class TestResultSetEquivalence:
         )
         score = _score(case, result, "SELECT CAST(1 AS BIGINT) AS n")
         assert score.passed is True
+
+    def test_typed_resolve_failure_is_reported(self) -> None:
+        case = _case(TypedResultSet(rows=[{"n": 1}], schema=[Column(name="n", type="INTEGER")]))
+        result = ExecutionResult(
+            rows=[{"n": 1}],
+            schema=[Column(name="n", type=SqlType.parse("DECIMAL", "duckdb"))],
+            latency_seconds=0.0,
+        )
+        context = ScoreContext(queries=QueryRunner(_TypeProbeFailingAdapter(), Sql("SELECT 1"), "duckdb", None))
+        score = ResultSetEquivalence().score(case, _OUTPUT, result, context=context)
+        assert score.passed is False
+        assert score.diff is None
+        assert score.explanation is not None
+        assert "could not resolve column types for type comparison: probe boom" in score.explanation
 
     def test_unparseable_expected_type_does_not_raise(self) -> None:
         # An expected schema with a type SQLGlot cannot parse must not raise; the cell

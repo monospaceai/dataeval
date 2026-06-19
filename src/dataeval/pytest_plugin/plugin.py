@@ -54,7 +54,7 @@ def pytest_terminal_summary(
     exitstatus: int,
     config: pytest.Config,
 ) -> None:
-    """Print the dataeval run summary table (controller only; skipped when no case ran)."""
+    """Print the dataeval run summary table."""
     if hasattr(config, "workerinput"):  # xdist worker — the controller reports
         return
     case_reports = reports()
