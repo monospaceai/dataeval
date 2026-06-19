@@ -31,7 +31,7 @@ build:
 
 # Everyday gate: excludes `cloud` (those run in their own fork-gated CI job).
 check: lint typecheck
-    just test-cov -m "not cloud"
+    just test-cov '-m "not cloud"'
 
 ci: check build
 
