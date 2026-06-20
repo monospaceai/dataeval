@@ -1,0 +1,46 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  # Build the sdist + wheel with no publish credentials in scope. If anything in the build
+  # (backend, build deps, restored cache) were compromised, it can't reach the OIDC token —
+  # that only exists in the separate `publish` job, which never runs project code.
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - run: uv build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: pypi
+      url: https://pypi.org/project/dataeval/
+    permissions:
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
+      # `always` forces the OIDC exchange instead of silently falling back to a token that
+      # doesn't exist, so a misconfigured trusted publisher fails with a clear error.
+      - run: uv publish --trusted-publishing always dist/*

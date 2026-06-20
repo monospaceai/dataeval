@@ -16,14 +16,68 @@ env:
   UV_FROZEN: "1"
 
 jobs:
-  ci:
-    name: ci (py${{ matrix.python-version }})
+  # Full gate: the whole suite (unit + e2e + cloud) at the latest Python, with the coverage
+  # gate and build. Cloud secrets aren't available to fork PRs, so it's skipped there and
+  # `check` treats that as OK.
+  gate:
+    name: gate (py3.13)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+      - name: Cache the Ollama model
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.ollama/models
+          key: ollama-qwen2.5-coder-1.5b
+      - name: Serve Ollama, pull model, run the full gate
+        run: |
+          sudo systemctl stop ollama 2>/dev/null || true
+          nohup ollama serve > /tmp/ollama.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:11434/api/tags >/dev/null && break
+            sleep 1
+          done
+          ollama pull qwen2.5-coder:1.5b
+          just ci
+        env:
+          DATAEVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+  # Compatibility: the non-cloud suite on the other supported Pythons (3.13 is the gate's). No
+  # secrets, so it runs on fork PRs too.
+  compat:
+    name: compat (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12"]
     services:
       postgres:
         image: postgres:17-alpine
@@ -52,7 +106,7 @@ jobs:
         with:
           path: ~/.ollama/models
           key: ollama-qwen2.5-coder-1.5b
-      - name: Serve Ollama, pull model, run CI
+      - name: Serve Ollama, pull model, run the non-cloud suite
         run: |
           sudo systemctl stop ollama 2>/dev/null || true
           nohup ollama serve > /tmp/ollama.log 2>&1 &
@@ -61,45 +115,23 @@ jobs:
             sleep 1
           done
           ollama pull qwen2.5-coder:1.5b
-          just ci
+          just check-nocloud
         env:
-          DATA_EVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
+          DATAEVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
 
-  # Credentialed `cloud` e2e (Databricks). Runs on push to main and on same-repo (non-fork)
-  # PRs — fork PRs can't access secrets, so it's skipped for them and `check` treats that as
-  # OK. A missing/expired secret makes the connection fail loudly, blocking the merge.
-  databricks-e2e:
-    name: databricks-e2e
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-        with:
-          enable-cache: true
-          python-version: "3.11"
-      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
-      - name: Run Databricks cloud e2e
-        run: just test-cloud
-        env:
-          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
-          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-
-  # Single required status check. Require only this in branch protection: it covers the matrix
-  # and the cloud e2e (a fork-skipped cloud job counts as OK; a real failure does not).
+  # Single required status check for branch protection: a fork-skipped `gate` is OK, a real
+  # failure is not.
   check:
     if: always()
-    needs: [ci, databricks-e2e]
+    needs: [gate, compat]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          if [ "${{ needs.ci.result }}" != "success" ]; then
-            echo "ci result: ${{ needs.ci.result }}"
+          if [ "${{ needs.gate.result }}" != "success" ] && [ "${{ needs.gate.result }}" != "skipped" ]; then
+            echo "gate result: ${{ needs.gate.result }}"
             exit 1
           fi
-          if [ "${{ needs.databricks-e2e.result }}" != "success" ] && [ "${{ needs.databricks-e2e.result }}" != "skipped" ]; then
-            echo "databricks-e2e result: ${{ needs.databricks-e2e.result }}"
+          if [ "${{ needs.compat.result }}" != "success" ]; then
+            echo "compat result: ${{ needs.compat.result }}"
             exit 1
           fi

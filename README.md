@@ -6,21 +6,21 @@
 
 **The evaluation framework for AI-generated SQL.**
 
-`pytest`-native evals that execute the SQL your AI writes against real warehouses, so you
-catch when a prompt or model change starts producing incorrect answers.
+Evaluate AI-generated SQL in your warehouse and catch regressions when prompts, models, or code change.
 
-> Status: pre-alpha. The API will change.
+Pytest-native. CI-friendly. Built for data teams.
 
-## Install (once published)
+## Install
 
 ```bash
-uv add dataeval              # core (includes the DuckDB adapter)
-uv add "dataeval[postgres]"  # + Postgres adapter
-uv add "dataeval[litellm]"   # + litellm, to call a model as the AI under test
+uv add dataeval                # core (includes the DuckDB adapter)
+uv add "dataeval[postgres]"    # + Postgres adapter
+uv add "dataeval[databricks]"  # + Databricks adapter
+uv add "dataeval[litellm]"     # + litellm, to call a model as the AI under test
 ```
 
-DuckDB and Postgres are the adapters available today. More warehouse adapters
-(Databricks, Snowflake, BigQuery) are planned.
+DuckDB, Postgres, and Databricks are the adapters available today. Snowflake and
+BigQuery are planned.
 
 ## Examples
 

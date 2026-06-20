@@ -7,8 +7,7 @@ test-cov *args:
     uv run coverage combine
     uv run coverage report
 
-# `cloud` e2e against credentialed hosted backends (Databricks, …). Needs secrets in the env;
-# run in a fork-gated CI job, not part of the default `check`.
+# Run only `cloud` e2e (Databricks, …) in isolation; needs the secrets in the env.
 test-cloud *args:
     uv run --all-extras pytest -m cloud {{args}}
 
@@ -29,9 +28,26 @@ precommit:
 build:
     uv build
 
-# Everyday gate: excludes `cloud` (those run in their own fork-gated CI job).
+# Live-reload docs at http://127.0.0.1:8000
+docs-serve:
+    uv run --group docs mkdocs serve
+
+# Build the docs into ./site, failing on broken references.
+docs-build:
+    uv run --group docs mkdocs build --strict
+
+# Publish versioned docs to the gh-pages branch. Pass the version, e.g. `just docs-deploy 0.1`.
+docs-deploy version:
+    uv run --group docs mike deploy --push --update-aliases {{version}} latest
+    uv run --group docs mike set-default --push latest
+
+# Everyday gate: runs everything incl. `cloud` (needs credentials in the env); coverage 100%.
 check: lint typecheck
-    just test-cov '-m "not cloud"'
+    just test-cov
+
+# Fast iteration: like `check` but skips `cloud`; no coverage gate. CI still runs everything.
+check-nocloud: lint typecheck
+    just test '-m "not cloud"'
 
 ci: check build
 
