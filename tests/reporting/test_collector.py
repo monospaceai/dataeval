@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from dataeval.reporting.collector import CaseReport, clear, extend, record, reports, run_report_json
-from dataeval.types import ResultSetDiff, ScoreResult
+from evaldata.reporting.collector import CaseReport, clear, extend, record, reports, run_report_json
+from evaldata.types import ResultSetDiff, ScoreResult
 
 
 @pytest.fixture(autouse=True)

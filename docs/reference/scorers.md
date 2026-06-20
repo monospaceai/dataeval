@@ -1,3 +1,3 @@
 # Scorers
 
-::: dataeval.scorers
+::: evaldata.scorers

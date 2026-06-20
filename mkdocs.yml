@@ -1,8 +1,8 @@
-site_name: dataeval
+site_name: evaldata
 site_description: AI evals framework for data & analytics engineering teams.
-site_url: https://monospaceai.github.io/dataeval/
-repo_url: https://github.com/monospaceai/dataeval
-repo_name: monospaceai/dataeval
+site_url: https://monospaceai.github.io/evaldata/
+repo_url: https://github.com/monospaceai/evaldata
+repo_name: monospaceai/evaldata
 copyright: Copyright &copy; monospaceai
 
 theme:

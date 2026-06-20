@@ -2,8 +2,8 @@
 
 import pytest
 
-from dataeval.scorers import QueryRunner
-from dataeval.types import Column, ExecutionResult, Schema, Sql, SqlType
+from evaldata.scorers import QueryRunner
+from evaldata.types import Column, ExecutionResult, Schema, Sql, SqlType
 
 
 class _RecordingAdapter:

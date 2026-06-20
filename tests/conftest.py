@@ -1,11 +1,11 @@
-"""Shared pytest fixtures for dataeval's own test suite."""
+"""Shared pytest fixtures for evaldata's own test suite."""
 
 from collections.abc import Iterator
 
 import pytest
 
-from dataeval.platforms.registry import close_all
-from dataeval.reporting.collector import clear
+from evaldata.platforms.registry import close_all
+from evaldata.reporting.collector import clear
 
 
 @pytest.fixture(autouse=True)

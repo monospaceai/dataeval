@@ -1,1 +1,1 @@
-"""Runnable example evals for dataeval."""
+"""Runnable example evals for evaldata."""

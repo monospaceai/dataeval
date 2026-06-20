@@ -1,4 +1,4 @@
-# dataeval
+# evaldata
 
 Evaluate AI-generated SQL in your warehouse and catch regressions when prompts, models, or code change.
 
@@ -7,10 +7,10 @@ Pytest-native. CI-friendly. Built for data teams.
 ## Install
 
 ```bash
-uv add dataeval                # core (includes the DuckDB adapter)
-uv add "dataeval[postgres]"    # + Postgres adapter
-uv add "dataeval[databricks]"  # + Databricks adapter
-uv add "dataeval[litellm]"     # + litellm, to call a model as the AI under test
+uv add evaldata                # core (includes the DuckDB adapter)
+uv add "evaldata[postgres]"    # + Postgres adapter
+uv add "evaldata[databricks]"  # + Databricks adapter
+uv add "evaldata[litellm]"     # + litellm, to call a model as the AI under test
 ```
 
 DuckDB, Postgres, and Databricks are the adapters available today. Snowflake and BigQuery

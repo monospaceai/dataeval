@@ -1,5 +1,5 @@
 # Evals &amp; cases
 
-::: dataeval.core
+::: evaldata.core
 
-::: dataeval.loaders
+::: evaldata.loaders

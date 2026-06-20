@@ -7,7 +7,7 @@ the model through [litellm](https://docs.litellm.ai).
 ## Prerequisites
 
 ```bash
-uv add "dataeval[litellm]"     # PromptSolver + litellm
+uv add "evaldata[litellm]"     # PromptSolver + litellm
 ollama pull qwen2.5-coder:1.5b # any model you like; a coder model scores best
 ```
 
@@ -23,7 +23,7 @@ Create `test_local_ai.py`:
 --8<-- "examples/02_local_ai/test_text_to_sql.py"
 ```
 
-The example reads the model id from `DATAEVAL_LOCAL_MODEL` and passes it to
+The example reads the model id from `EVALDATA_LOCAL_MODEL` and passes it to
 `PromptSolver(model=...)` — that's just the model argument, so you can pass a literal instead. If
 Ollama runs somewhere other than the default, set `OLLAMA_API_BASE` (litellm reads it).
 

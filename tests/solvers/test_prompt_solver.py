@@ -6,9 +6,9 @@ import types
 import litellm
 import pytest
 
-from dataeval.solvers import Solver
-from dataeval.solvers.prompt import PromptSolver, SqlOutput
-from dataeval.types import EvalCase, PlatformRef, SQLDialect, UntypedResultSet
+from evaldata.solvers import Solver
+from evaldata.solvers.prompt import PromptSolver, SqlOutput
+from evaldata.types import EvalCase, PlatformRef, SQLDialect, UntypedResultSet
 
 _E2E_MODEL = "openai/gpt-4o-mini"
 

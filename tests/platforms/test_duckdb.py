@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from sqlglot import exp
 
-from dataeval.platforms.duckdb import DuckDBAdapter
+from evaldata.platforms.duckdb import DuckDBAdapter
 
 
 @pytest.mark.unit

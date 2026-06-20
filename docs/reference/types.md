@@ -1,3 +1,3 @@
 # Types
 
-::: dataeval.types
+::: evaldata.types

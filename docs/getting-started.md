@@ -6,7 +6,7 @@ there's nothing to set up beyond installing the package.
 ## Install
 
 ```bash
-uv add dataeval   # core, includes the DuckDB adapter
+uv add evaldata   # core, includes the DuckDB adapter
 ```
 
 ## The shape of an eval
@@ -18,7 +18,7 @@ Every eval is the same four pieces:
 - one or more **scorers** — how the result is judged against `expected`
 - a **platform** — the database the SQL runs on
 
-`dataeval` is pytest-native: a case is a test function decorated with `@eval_case`, and
+`evaldata` is pytest-native: a case is a test function decorated with `@eval_case`, and
 `assert_eval` runs the solver's SQL on the platform and asserts the scorers pass.
 
 ## Write your first eval
@@ -34,8 +34,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dataeval import CallableSolver, EvalCase, ResultSetEquivalence, assert_eval, eval_case
-from dataeval.platforms import duckdb_platform
+from evaldata import CallableSolver, EvalCase, ResultSetEquivalence, assert_eval, eval_case
+from evaldata.platforms import duckdb_platform
 
 _DB = Path(tempfile.mkdtemp()) / "shop.duckdb"
 platform = duckdb_platform(name="shop", path=str(_DB))
@@ -63,7 +63,7 @@ def test_total_order_amount(case: EvalCase) -> None:
 Here's what each piece does:
 
 - **`@eval_case(...)`** declares the case and injects a prepared `EvalCase` as the `case`
-  fixture. You don't need a `conftest.py` — installing `dataeval` registers its pytest plugin.
+  fixture. You don't need a `conftest.py` — installing `evaldata` registers its pytest plugin.
 - **`CallableSolver`** is the simplest solver: a function returning the SQL to run. Here it's
   fixed SQL so the result is deterministic; in a real eval this is where your model goes (see
   the [guides](guides/local-ollama.md)).

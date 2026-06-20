@@ -7,11 +7,11 @@ engines — proving the checks use engine-native semantics, not a Python re-impl
 
 import pytest
 
-from dataeval.platforms.base import PlatformAdapter
-from dataeval.platforms.duckdb import DuckDBAdapter
-from dataeval.scorers import ExpectationSuiteScorer, QueryRunner, ScoreContext
-from dataeval.scorers.sql import Dialect
-from dataeval.types import (
+from evaldata.platforms.base import PlatformAdapter
+from evaldata.platforms.duckdb import DuckDBAdapter
+from evaldata.scorers import ExpectationSuiteScorer, QueryRunner, ScoreContext
+from evaldata.scorers.sql import Dialect
+from evaldata.types import (
     Column,
     EvalCase,
     ExecutionResult,

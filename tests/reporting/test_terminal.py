@@ -2,9 +2,9 @@
 
 import pytest
 
-from dataeval.reporting.collector import CaseReport
-from dataeval.reporting.terminal import render_failure, render_solver_error, render_summary
-from dataeval.types import (
+from evaldata.reporting.collector import CaseReport
+from evaldata.reporting.terminal import render_failure, render_solver_error, render_summary
+from evaldata.types import (
     ColumnMismatch,
     EvalCase,
     ExecutionResult,

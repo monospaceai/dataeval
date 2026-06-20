@@ -1,3 +1,3 @@
 # Equivalence
 
-::: dataeval.equivalence
+::: evaldata.equivalence

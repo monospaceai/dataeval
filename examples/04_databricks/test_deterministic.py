@@ -14,7 +14,7 @@ from decimal import Decimal
 
 import pytest
 
-from dataeval import (
+from evaldata import (
     CallableSolver,
     EvalCase,
     ExpectationSuiteScorer,
@@ -22,11 +22,11 @@ from dataeval import (
     assert_eval,
     eval_case,
 )
-from dataeval.platforms import databricks_platform, resolve
+from evaldata.platforms import databricks_platform, resolve
 
 pytestmark = [pytest.mark.e2e, pytest.mark.cloud]
 
-_VIEW = "dataeval_ex04_orders"
+_VIEW = "evaldata_ex04_orders"
 _PLATFORM = databricks_platform(
     name="examples-databricks",
     server_hostname=os.environ.get("DATABRICKS_SERVER_HOSTNAME", ""),
@@ -51,7 +51,7 @@ def _seed_warehouse() -> Iterator[None]:
     yield
 
 
-# Precise column types. The `DECIMAL(10, 2)` assertion holds only because dataeval resolves
+# Precise column types. The `DECIMAL(10, 2)` assertion holds only because evaldata resolves
 # the column types from the warehouse — the driver's own description reports a scaleless `DECIMAL`.
 @eval_case(
     input="List each order's customer and amount, ordered by id.",

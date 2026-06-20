@@ -2,9 +2,9 @@
 
 import pytest
 
-from dataeval.scorers import ExpectationSuiteScorer, QueryRunner, ScoreContext, Scorer
-from dataeval.scorers.expectation_suite import SCORER_NAME
-from dataeval.types import (
+from evaldata.scorers import ExpectationSuiteScorer, QueryRunner, ScoreContext, Scorer
+from evaldata.scorers.expectation_suite import SCORER_NAME
+from evaldata.types import (
     Column,
     ColumnPresenceExpectation,
     ColumnTypeExpectation,

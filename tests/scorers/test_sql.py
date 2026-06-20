@@ -1,12 +1,12 @@
-"""Tests for `dataeval.scorers.sql` — dialect-correct, identifier-safe check SQL."""
+"""Tests for `evaldata.scorers.sql` — dialect-correct, identifier-safe check SQL."""
 
 import datetime
 from decimal import Decimal
 
 import pytest
 
-from dataeval.scorers import sql
-from dataeval.types import Column, Schema, Sql, SqlType
+from evaldata.scorers import sql
+from evaldata.types import Column, Schema, Sql, SqlType
 
 _MODEL = Sql("SELECT email FROM users")
 

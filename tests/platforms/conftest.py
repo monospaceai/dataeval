@@ -7,9 +7,9 @@ from typing import Protocol
 import pytest
 import sqlglot
 
-from dataeval.platforms.base import PlatformAdapter
-from dataeval.platforms.duckdb import DuckDBAdapter
-from dataeval.scorers.sql import Dialect
+from evaldata.platforms.base import PlatformAdapter
+from evaldata.platforms.duckdb import DuckDBAdapter
+from evaldata.scorers.sql import Dialect
 
 
 def render_model(base: str, dialect: Dialect) -> str:
@@ -129,7 +129,7 @@ def connect_postgres() -> PlatformAdapter:
 
     Fail-loud: a missing extra or unreachable database raises rather than skipping.
     """
-    from dataeval.platforms.postgres import PostgresAdapter
+    from evaldata.platforms.postgres import PostgresAdapter
 
     return PostgresAdapter(_postgres_dsn())
 
@@ -145,7 +145,7 @@ def connect_databricks() -> PlatformAdapter:
     the ambient environment via the Databricks SDK. Fail-loud: a missing extra, unset
     connection details, or an unreachable workspace raises rather than skipping.
     """
-    from dataeval.platforms.databricks import DatabricksAdapter
+    from evaldata.platforms.databricks import DatabricksAdapter
 
     return DatabricksAdapter(
         server_hostname=os.environ["DATABRICKS_SERVER_HOSTNAME"],

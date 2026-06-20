@@ -1,19 +1,19 @@
 # Evaluate against Databricks
 
 Run an eval against a real Databricks SQL warehouse. The solver returns fixed SQL, so the focus
-is the platform: `dataeval` resolves precise column types from the warehouse and pushes the
+is the platform: `evaldata` resolves precise column types from the warehouse and pushes the
 checks down into server-side SQL.
 
 ## Prerequisites
 
 ```bash
-uv add "dataeval[databricks]"
+uv add "evaldata[databricks]"
 ```
 
 ## What it demonstrates
 
 - **Precise type resolution** — the typed case asserts `amount: DECIMAL(10, 2)`, which holds
-  only because `dataeval` resolves precise column types from the warehouse; the raw driver
+  only because `evaldata` resolves precise column types from the warehouse; the raw driver
   reports a scaleless `DECIMAL`.
 - **Warehouse pushdown** — the `ExpectationSuite` (`row_count` / `not_null` / `unique`) and
   result-set equivalence run as SQL server-side, not by pulling rows back to compare.

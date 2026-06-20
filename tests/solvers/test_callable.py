@@ -2,8 +2,8 @@
 
 import pytest
 
-from dataeval.solvers import CallableSolver, Solver
-from dataeval.types import EvalCase, PlatformRef, SolverOutput, UntypedResultSet
+from evaldata.solvers import CallableSolver, Solver
+from evaldata.types import EvalCase, PlatformRef, SolverOutput, UntypedResultSet
 
 
 def _case() -> EvalCase:

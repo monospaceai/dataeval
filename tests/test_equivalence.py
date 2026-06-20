@@ -2,12 +2,12 @@
 
 import pytest
 
-from dataeval.equivalence import (
+from evaldata.equivalence import (
     ColumnReconciliation,
     build_result_set_diff,
     reconcile_columns,
 )
-from dataeval.types import ColumnMismatch, TypeMismatch
+from evaldata.types import ColumnMismatch, TypeMismatch
 
 # ---------- column reconciliation ----------
 

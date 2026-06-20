@@ -6,9 +6,9 @@ import pytest
 
 databricks_sql = pytest.importorskip("databricks.sql")
 
-from dataeval.platforms.databricks import DatabricksAdapter  # noqa: E402
-from dataeval.scorers.query import QueryRunner  # noqa: E402
-from dataeval.types import Sql, SqlType  # noqa: E402
+from evaldata.platforms.databricks import DatabricksAdapter  # noqa: E402
+from evaldata.scorers.query import QueryRunner  # noqa: E402
+from evaldata.types import Sql, SqlType  # noqa: E402
 
 Description = list[tuple[str, str]]
 
@@ -151,7 +151,7 @@ class TestLifecycle:
             return _FakeConnection(_FakeCursor(None, []))
 
         monkeypatch.setattr(databricks_sql, "connect", fake_connect)
-        monkeypatch.setattr("dataeval.platforms.databricks.Config", lambda host: object())
+        monkeypatch.setattr("evaldata.platforms.databricks.Config", lambda host: object())
 
     def test_init_connects_and_resolves_credentials_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, Any] = {}

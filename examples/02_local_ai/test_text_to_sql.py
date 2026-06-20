@@ -8,20 +8,20 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dataeval import EvalCase, ResultSetEquivalence, assert_eval, eval_case
-from dataeval.platforms import duckdb_platform
-from dataeval.solvers import PromptSolver
+from evaldata import EvalCase, ResultSetEquivalence, assert_eval, eval_case
+from evaldata.platforms import duckdb_platform
+from evaldata.solvers import PromptSolver
 
-_DB_PATH = Path(tempfile.mkdtemp(prefix="dataeval_ex02_")) / "shop.duckdb"
+_DB_PATH = Path(tempfile.mkdtemp(prefix="evaldata_ex02_")) / "shop.duckdb"
 _PLATFORM = duckdb_platform(name="examples-local-ai", path=str(_DB_PATH))
-_MODEL = os.environ.get("DATAEVAL_LOCAL_MODEL", "")
+_MODEL = os.environ.get("EVALDATA_LOCAL_MODEL", "")
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _require_local_model() -> None:
     # Fail loudly (never skip) when these examples run without a configured local model.
     if not _MODEL:  # pragma: no cover
-        msg = "set DATAEVAL_LOCAL_MODEL to your local model's id, e.g. ollama_chat/qwen2.5-coder:1.5b"
+        msg = "set EVALDATA_LOCAL_MODEL to your local model's id, e.g. ollama_chat/qwen2.5-coder:1.5b"
         raise RuntimeError(msg)
 
 

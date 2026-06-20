@@ -1,7 +1,7 @@
 # Solvers
 
-::: dataeval.solvers.base
+::: evaldata.solvers.base
 
-::: dataeval.solvers.callable
+::: evaldata.solvers.callable
 
-::: dataeval.solvers.prompt
+::: evaldata.solvers.prompt

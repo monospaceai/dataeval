@@ -6,28 +6,28 @@ from typing import Any
 
 import pytest
 
-import dataeval
-from dataeval import platforms, solvers
+import evaldata
+from evaldata import platforms, solvers
 
 pytestmark = pytest.mark.unit
 
 
 def test_prompt_solver_top_level() -> None:
-    from dataeval.solvers.prompt import PromptSolver
+    from evaldata.solvers.prompt import PromptSolver
 
-    assert dataeval.PromptSolver is PromptSolver
-    assert "PromptSolver" in dir(dataeval)
+    assert evaldata.PromptSolver is PromptSolver
+    assert "PromptSolver" in dir(evaldata)
 
 
 def test_prompt_solver_subpackage() -> None:
-    from dataeval.solvers.prompt import PromptSolver
+    from evaldata.solvers.prompt import PromptSolver
 
     assert solvers.PromptSolver is PromptSolver
     assert "PromptSolver" in dir(solvers)
 
 
 def test_postgres_adapter_subpackage() -> None:
-    from dataeval.platforms.postgres import PostgresAdapter
+    from evaldata.platforms.postgres import PostgresAdapter
 
     assert platforms.PostgresAdapter is PostgresAdapter
     assert "PostgresAdapter" in dir(platforms)
@@ -35,11 +35,11 @@ def test_postgres_adapter_subpackage() -> None:
 
 def test_postgres_adapter_not_top_level() -> None:
     with pytest.raises(AttributeError):
-        _ = dataeval.PostgresAdapter
+        _ = evaldata.PostgresAdapter
 
 
 def test_databricks_adapter_subpackage() -> None:
-    from dataeval.platforms.databricks import DatabricksAdapter
+    from evaldata.platforms.databricks import DatabricksAdapter
 
     assert platforms.DatabricksAdapter is DatabricksAdapter
     assert "DatabricksAdapter" in dir(platforms)
@@ -47,7 +47,7 @@ def test_databricks_adapter_subpackage() -> None:
 
 def test_databricks_adapter_not_top_level() -> None:
     with pytest.raises(AttributeError):
-        _ = dataeval.DatabricksAdapter
+        _ = evaldata.DatabricksAdapter
 
 
 def _blocking_import(blocked: str) -> Callable[..., Any]:
@@ -63,29 +63,29 @@ def _blocking_import(blocked: str) -> Callable[..., Any]:
 
 
 def test_prompt_solver_missing_litellm(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delitem(__import__("sys").modules, "dataeval.solvers.prompt", raising=False)
+    monkeypatch.delitem(__import__("sys").modules, "evaldata.solvers.prompt", raising=False)
     monkeypatch.setattr(builtins, "__import__", _blocking_import("litellm"))
-    with pytest.raises(ImportError, match=r"dataeval\[litellm\]"):
+    with pytest.raises(ImportError, match=r"evaldata\[litellm\]"):
         solvers.__getattr__("PromptSolver")
 
 
 def test_postgres_adapter_missing_psycopg(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delitem(__import__("sys").modules, "dataeval.platforms.postgres", raising=False)
+    monkeypatch.delitem(__import__("sys").modules, "evaldata.platforms.postgres", raising=False)
     monkeypatch.setattr(builtins, "__import__", _blocking_import("psycopg"))
-    with pytest.raises(ImportError, match=r"dataeval\[postgres\]"):
+    with pytest.raises(ImportError, match=r"evaldata\[postgres\]"):
         platforms.__getattr__("PostgresAdapter")
 
 
 def test_databricks_adapter_missing_databricks(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delitem(__import__("sys").modules, "dataeval.platforms.databricks", raising=False)
+    monkeypatch.delitem(__import__("sys").modules, "evaldata.platforms.databricks", raising=False)
     monkeypatch.setattr(builtins, "__import__", _blocking_import("databricks.sql"))
-    with pytest.raises(ImportError, match=r"dataeval\[databricks\]"):
+    with pytest.raises(ImportError, match=r"evaldata\[databricks\]"):
         platforms.__getattr__("DatabricksAdapter")
 
 
 def test_unknown_attribute_top_level() -> None:
     with pytest.raises(AttributeError):
-        _ = dataeval.NoSuchThing
+        _ = evaldata.NoSuchThing
 
 
 def test_unknown_attribute_solvers() -> None:

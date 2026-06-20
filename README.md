@@ -1,7 +1,7 @@
-# dataeval
+# evaldata
 
-[![CI](https://github.com/monospaceai/dataeval/actions/workflows/ci.yml/badge.svg)](https://github.com/monospaceai/dataeval/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/monospaceai/dataeval/actions/workflows/ci.yml)
+[![CI](https://github.com/monospaceai/evaldata/actions/workflows/ci.yml/badge.svg)](https://github.com/monospaceai/evaldata/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/monospaceai/evaldata/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **The evaluation framework for AI-generated SQL.**
@@ -13,10 +13,10 @@ Pytest-native. CI-friendly. Built for data teams.
 ## Install
 
 ```bash
-uv add dataeval                # core (includes the DuckDB adapter)
-uv add "dataeval[postgres]"    # + Postgres adapter
-uv add "dataeval[databricks]"  # + Databricks adapter
-uv add "dataeval[litellm]"     # + litellm, to call a model as the AI under test
+uv add evaldata                # core (includes the DuckDB adapter)
+uv add "evaldata[postgres]"    # + Postgres adapter
+uv add "evaldata[databricks]"  # + Databricks adapter
+uv add "evaldata[litellm]"     # + litellm, to call a model as the AI under test
 ```
 
 DuckDB, Postgres, and Databricks are the adapters available today. Snowflake and
@@ -37,8 +37,8 @@ See [`examples/README.md`](examples/README.md) for details.
 ## Develop locally
 
 ```bash
-git clone https://github.com/monospaceai/dataeval.git
-cd dataeval
+git clone https://github.com/monospaceai/evaldata.git
+cd evaldata
 uv sync                       # core + dev tooling
 uv run pre-commit install
 just check                    # lint + typecheck + tests with coverage (runs everything)

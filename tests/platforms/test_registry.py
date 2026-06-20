@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from dataeval.platforms import databricks_platform, duckdb_platform, postgres_platform, resolve
-from dataeval.platforms.registry import close_all
-from dataeval.types import PlatformRef
+from evaldata.platforms import databricks_platform, duckdb_platform, postgres_platform, resolve
+from evaldata.platforms.registry import close_all
+from evaldata.types import PlatformRef
 
 
 @pytest.mark.unit
@@ -72,23 +72,23 @@ class TestResolve:
 
     def test_postgres_extra_missing_raises_runtime_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Simulate the 'postgres' extra not being installed: importing the adapter fails.
-        monkeypatch.setitem(sys.modules, "dataeval.platforms.postgres", None)
+        monkeypatch.setitem(sys.modules, "evaldata.platforms.postgres", None)
         with pytest.raises(RuntimeError, match="requires the 'postgres' extra"):
             resolve(postgres_platform(name="pg-missing-extra", conninfo=""))
 
     def test_databricks_extra_missing_raises_runtime_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Simulate the 'databricks' extra not being installed: importing the adapter fails.
-        monkeypatch.setitem(sys.modules, "dataeval.platforms.databricks", None)
+        monkeypatch.setitem(sys.modules, "evaldata.platforms.databricks", None)
         with pytest.raises(RuntimeError, match="requires the 'databricks' extra"):
             resolve(databricks_platform(name="dbx-missing-extra", server_hostname="h", http_path="/p"))
 
     def test_resolves_databricks_through_registry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Mock the connector so the registry's databricks dispatch builds an adapter without a
         # live workspace.
-        from dataeval.platforms.databricks import DatabricksAdapter
+        from evaldata.platforms.databricks import DatabricksAdapter
 
         monkeypatch.setattr("databricks.sql.connect", lambda **kwargs: types.SimpleNamespace(close=lambda: None))
-        monkeypatch.setattr("dataeval.platforms.databricks.Config", lambda host: object())
+        monkeypatch.setattr("evaldata.platforms.databricks.Config", lambda host: object())
         adapter = resolve(
             databricks_platform(name="dbx-build", server_hostname="h", http_path="/p", catalog="main", schema="sales")
         )

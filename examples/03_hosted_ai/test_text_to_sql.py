@@ -8,13 +8,13 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dataeval import EvalCase, ResultSetEquivalence, assert_eval, eval_case
-from dataeval.platforms import duckdb_platform
-from dataeval.solvers import PromptSolver
+from evaldata import EvalCase, ResultSetEquivalence, assert_eval, eval_case
+from evaldata.platforms import duckdb_platform
+from evaldata.solvers import PromptSolver
 
-_DB_PATH = Path(tempfile.mkdtemp(prefix="dataeval_ex03_")) / "shop.duckdb"
+_DB_PATH = Path(tempfile.mkdtemp(prefix="evaldata_ex03_")) / "shop.duckdb"
 _PLATFORM = duckdb_platform(name="examples-hosted-ai", path=str(_DB_PATH))
-_MODEL = os.getenv("DATAEVAL_HOSTED_MODEL", "openai/gpt-4o-mini")
+_MODEL = os.getenv("EVALDATA_HOSTED_MODEL", "openai/gpt-4o-mini")
 
 
 @pytest.fixture(scope="module", autouse=True)

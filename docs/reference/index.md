@@ -1,6 +1,6 @@
 # API reference
 
-The public API, generated from docstrings. The top-level `dataeval` namespace re-exports the
+The public API, generated from docstrings. The top-level `evaldata` namespace re-exports the
 most common entry points:
 
 | Symbol | Page |

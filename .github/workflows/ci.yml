@@ -63,7 +63,7 @@ jobs:
           ollama pull qwen2.5-coder:1.5b
           just ci
         env:
-          DATAEVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
+          EVALDATA_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
           DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
           DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
@@ -117,7 +117,7 @@ jobs:
           ollama pull qwen2.5-coder:1.5b
           just check-nocloud
         env:
-          DATAEVAL_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
+          EVALDATA_LOCAL_MODEL: ollama_chat/qwen2.5-coder:1.5b
 
   # Single required status check for branch protection: a fork-skipped `gate` is OK, a real
   # failure is not.

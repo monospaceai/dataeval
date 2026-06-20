@@ -1,5 +1,5 @@
 [project]
-name = "dataeval"
+name = "evaldata"
 version = "0.1.0"
 description = "AI evals framework for data & analytics engineering teams."
 readme = "README.md"
@@ -61,26 +61,26 @@ tracing = [
     "opentelemetry-sdk>=1.42.1",
 ]
 all-platforms = [
-    "dataeval[postgres,snowflake,bigquery,databricks]",
+    "evaldata[postgres,snowflake,bigquery,databricks]",
 ]
 all = [
-    "dataeval[all-platforms,litellm,tracing]",
+    "evaldata[all-platforms,litellm,tracing]",
 ]
 
 [project.urls]
-Homepage = "https://github.com/monospaceai/dataeval"
-Repository = "https://github.com/monospaceai/dataeval"
-Issues = "https://github.com/monospaceai/dataeval/issues"
+Homepage = "https://github.com/monospaceai/evaldata"
+Repository = "https://github.com/monospaceai/evaldata"
+Issues = "https://github.com/monospaceai/evaldata/issues"
 
-# The `dataeval` console command. Points straight at the Typer `app` object (a Typer
+# The `evaldata` console command. Points straight at the Typer `app` object (a Typer
 # instance is callable) — the form the Typer packaging tutorial shows.
 [project.scripts]
-dataeval = "dataeval.cli:app"
+evaldata = "evaldata.cli:app"
 
-# Registers the dataeval pytest plugin (the `case` fixture + session-end adapter
+# Registers the evaldata pytest plugin (the `case` fixture + session-end adapter
 # cleanup) automatically on install, so `pytest tests/` works with zero conftest setup.
 [project.entry-points.pytest11]
-dataeval = "dataeval.pytest_plugin.plugin"
+evaldata = "evaldata.pytest_plugin.plugin"
 
 [build-system]
 requires = ["uv_build>=0.8.19,<0.9.0"]
@@ -133,7 +133,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["dataeval"]
+known-first-party = ["evaldata"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -167,7 +167,7 @@ markers = [
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
 branch = true
-source = ["src/dataeval", "examples"]
+source = ["src/evaldata", "examples"]
 parallel = true
 omit = [
     "tests/*",

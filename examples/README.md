@@ -1,6 +1,6 @@
 # Examples
 
-Runnable, pytest-native `dataeval` examples using the product surface: the `@eval_case`
+Runnable, pytest-native `evaldata` examples using the product surface: the `@eval_case`
 decorator, the injected `case` fixture, and `assert_eval`. Each seeds its own small dataset
 via an autouse fixture.
 
@@ -21,9 +21,9 @@ Databricks SQL Warehouse, with a deterministic solver so the focus is the platfo
 | Dir | Solver | Purpose | Needs |
 | --- | --- | --- | --- |
 | `01_deterministic` | `CallableSolver` (fixed SQL) | Exercises each expected-type and scorer with no model or network | nothing |
-| `02_local_ai` | `PromptSolver` → local Ollama | Runs a self-hosted Ollama model through litellm | `dataeval[litellm]` + `ollama pull gemma4` |
-| `03_hosted_ai` | `PromptSolver` → hosted model | Sense-checks the hosted-model plumbing with a mocked reply (no live call) | `dataeval[litellm]` |
-| `04_databricks` | `CallableSolver` (fixed SQL) | Runs the same cases against a live Databricks SQL Warehouse | `dataeval[databricks]` + a warehouse |
+| `02_local_ai` | `PromptSolver` → local Ollama | Runs a self-hosted Ollama model through litellm | `evaldata[litellm]` + `ollama pull gemma4` |
+| `03_hosted_ai` | `PromptSolver` → hosted model | Sense-checks the hosted-model plumbing with a mocked reply (no live call) | `evaldata[litellm]` |
+| `04_databricks` | `CallableSolver` (fixed SQL) | Runs the same cases against a live Databricks SQL Warehouse | `evaldata[databricks]` + a warehouse |
 
 ### 01_deterministic
 The solver is a `CallableSolver` returning fixed SQL. One file covers the expected-types:
@@ -35,13 +35,13 @@ an untyped result set (values only), a typed result set (values + column types),
 `PromptSolver` calls a self-hosted Ollama model through litellm.
 Questions ask for plain column selections, whose output column names come from the table
 and are therefore stable, keeping exact-row `ResultSetEquivalence` scoring reliable.
-Override the model with `DATAEVAL_LOCAL_MODEL` (default `ollama_chat/gemma4`; e.g. a coder
+Override the model with `EVALDATA_LOCAL_MODEL` (default `ollama_chat/gemma4`; e.g. a coder
 model like `ollama_chat/qwen2.5-coder:1.5b`), and point at a remote Ollama instance with
 `OLLAMA_API_BASE`.
 
 ### 03_hosted_ai
 Mirrors 02 against a hosted model (`openai/gpt-4o-mini` by default, override with
-`DATAEVAL_HOSTED_MODEL`). The model reply is mocked per question, so it runs
+`EVALDATA_HOSTED_MODEL`). The model reply is mocked per question, so it runs
 deterministically as a sense-check of the example's plumbing without making a real call or
 needing an API key.
 
@@ -49,7 +49,7 @@ needing an API key.
 The same deterministic cases as 01, executed against a real Databricks SQL Warehouse to show
 its platform features:
 - **Precise type resolution** — the typed case asserts `amount: DECIMAL(10, 2)`, which holds
-  only because dataeval resolves precise column types from the warehouse; the raw driver
+  only because evaldata resolves precise column types from the warehouse; the raw driver
   reports a scaleless `DECIMAL`.
 - **Warehouse pushdown** — `ExpectationSuite` (`row_count` / `not_null` / `unique`) and
   result-set equivalence run server-side, not by pulling rows back.

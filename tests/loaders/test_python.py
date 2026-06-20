@@ -3,9 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from dataeval.loaders.python import eval_case, read_eval_case
-from dataeval.platforms import duckdb_platform
-from dataeval.types import ComparisonConfig, CostBudget, GoldQuery, TypedResultSet, UntypedResultSet
+from evaldata.loaders.python import eval_case, read_eval_case
+from evaldata.platforms import duckdb_platform
+from evaldata.types import ComparisonConfig, CostBudget, GoldQuery, TypedResultSet, UntypedResultSet
 
 _PLATFORM = duckdb_platform(name="local")
 

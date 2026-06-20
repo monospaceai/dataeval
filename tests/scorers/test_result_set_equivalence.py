@@ -2,10 +2,10 @@
 
 import pytest
 
-from dataeval.platforms.duckdb import DuckDBAdapter
-from dataeval.scorers import QueryRunner, ResultSetEquivalence, ScoreContext, Scorer
-from dataeval.scorers.result_set_equivalence import SCORER_NAME
-from dataeval.types import (
+from evaldata.platforms.duckdb import DuckDBAdapter
+from evaldata.scorers import QueryRunner, ResultSetEquivalence, ScoreContext, Scorer
+from evaldata.scorers.result_set_equivalence import SCORER_NAME
+from evaldata.types import (
     Column,
     ComparisonConfig,
     EvalCase,

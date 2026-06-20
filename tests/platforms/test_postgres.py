@@ -3,7 +3,7 @@
 import pytest
 from sqlglot import exp
 
-from dataeval.platforms.base import PlatformAdapter
+from evaldata.platforms.base import PlatformAdapter
 
 from .conftest import connect_postgres
 
@@ -64,7 +64,7 @@ class TestPostgresLifecycle:
 
     def test_context_manager_returns_self_and_closes(self) -> None:
         connect_postgres().close()  # fail early if Postgres is unreachable
-        from dataeval.platforms.postgres import PostgresAdapter
+        from evaldata.platforms.postgres import PostgresAdapter
 
         from .conftest import _postgres_dsn
 

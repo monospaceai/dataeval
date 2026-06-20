@@ -1,11 +1,11 @@
 # Platforms
 
-::: dataeval.platforms.base
+::: evaldata.platforms.base
 
-::: dataeval.platforms.registry
+::: evaldata.platforms.registry
 
-::: dataeval.platforms.duckdb
+::: evaldata.platforms.duckdb
 
-::: dataeval.platforms.postgres
+::: evaldata.platforms.postgres
 
-::: dataeval.platforms.databricks
+::: evaldata.platforms.databricks

@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 5
     environment:
       name: pypi
-      url: https://pypi.org/project/dataeval/
+      url: https://pypi.org/project/evaldata/
     permissions:
       id-token: write
     steps:

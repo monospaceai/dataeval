@@ -1,6 +1,6 @@
 """Shared `PlatformAdapter` conformance battery, parametrised over every adapter via `under_test`."""
 
-from dataeval.platforms.base import PlatformAdapter, execute_within_budget
+from evaldata.platforms.base import PlatformAdapter, execute_within_budget
 
 from .conftest import UnderTest
 

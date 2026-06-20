@@ -7,7 +7,7 @@ credentials, and it runs.
 ## Prerequisites
 
 ```bash
-uv add "dataeval[litellm]"
+uv add "evaldata[litellm]"
 ```
 
 ## Write the eval
@@ -18,7 +18,7 @@ The solver is a `PromptSolver(model=...)`. Create `test_hosted_ai.py`:
 --8<-- "examples/03_hosted_ai/test_text_to_sql.py"
 ```
 
-The example reads the model id from `DATAEVAL_HOSTED_MODEL` and passes it to
+The example reads the model id from `EVALDATA_HOSTED_MODEL` and passes it to
 `PromptSolver(model=...)` — that's just the model argument, so you can pass a literal instead.
 litellm reads your provider credentials from the environment, e.g. `OPENAI_API_KEY`.
 

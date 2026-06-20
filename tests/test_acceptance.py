@@ -7,13 +7,13 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dataeval import CallableSolver, ResultSetEquivalence, assert_eval, eval_case
-from dataeval.platforms import duckdb_platform
-from dataeval.types import EvalCase
+from evaldata import CallableSolver, ResultSetEquivalence, assert_eval, eval_case
+from evaldata.platforms import duckdb_platform
+from evaldata.types import EvalCase
 
 # Resolved at import (decoration) time, before fixtures run; the file is seeded by a
 # fixture and opened lazily when the test executes.
-_DB_PATH = Path(tempfile.mkdtemp(prefix="dataeval_accept_")) / "chinook.duckdb"
+_DB_PATH = Path(tempfile.mkdtemp(prefix="evaldata_accept_")) / "chinook.duckdb"
 _ROCK_SQL = "SELECT count(*) AS count FROM tracks WHERE genre = 'Rock'"
 
 
