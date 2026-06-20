@@ -1,55 +1,55 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/concepts/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/concepts/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/getting-started/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/getting-started/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/guides/databricks/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/guides/databricks/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/guides/hosted-model/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/guides/hosted-model/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/guides/local-ollama/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/guides/local-ollama/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/reference/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/reference/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/reference/equivalence/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/reference/equivalence/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/reference/eval/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/reference/eval/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/reference/platforms/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/reference/platforms/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/reference/scorers/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/reference/scorers/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/reference/solvers/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/reference/solvers/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
     <url>
-         <loc>https://monospaceai.github.io/dataeval/0.1/reference/types/</loc>
+         <loc>https://monospaceai.github.io/evaldata/0.1/reference/types/</loc>
          <lastmod>2026-06-20</lastmod>
     </url>
 </urlset>
