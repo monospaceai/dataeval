@@ -91,9 +91,15 @@ dev = [
     "coverage[toml]>=7.14.0",
     "pre-commit>=4.6.0",
     "pytest-cov>=7.1.0",
+    "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.15.14",
     "ty>=0.0.39",
+]
+docs = [
+    "mkdocs-material>=9.7",
+    "mkdocstrings[python]>=1.0",
+    "mike>=2.1",
 ]
 
 [tool.uv]
@@ -145,6 +151,7 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--showlocals",
+    "--timeout=120",
     # `importlib` lets sibling example tiers reuse a test filename without basename
     # collisions, since dirs starting with a digit can't form unique package names.
     "--import-mode=importlib",

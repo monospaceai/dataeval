@@ -87,8 +87,8 @@ def test_untyped_total(case: EvalCase) -> None:
 
 
 # Gold query: the reference query's executed RESULT is the expected answer (execution
-# accuracy). The solver phrases its SQL differently but yields the same rows, so it passes —
-# the comparison is on results, not SQL text.
+# accuracy). The comparison is on the executed result, not the SQL text, so any query that
+# returns the same rows passes.
 @eval_case(
     input="What is the total order amount per customer?",
     expected={
@@ -105,8 +105,8 @@ def test_gold_query(case: EvalCase) -> None:
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])
 
 
-# Expectation suite: structural assertions pushed into the warehouse as SQL
-# (`row_count` / `not_null` / `unique`) instead of pulling rows back to compare.
+# Expectation suite: structural assertions (`row_count` / `not_null` / `unique`) pushed into
+# the warehouse and evaluated as server-side SQL.
 @eval_case(
     input="List every order's id and customer.",
     expected={

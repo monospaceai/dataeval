@@ -28,6 +28,19 @@ precommit:
 build:
     uv build
 
+# Live-reload docs at http://127.0.0.1:8000
+docs-serve:
+    uv run --group docs mkdocs serve
+
+# Build the docs into ./site, failing on broken references.
+docs-build:
+    uv run --group docs mkdocs build --strict
+
+# Publish versioned docs to the gh-pages branch. Pass the version, e.g. `just docs-deploy 0.1`.
+docs-deploy version:
+    uv run --group docs mike deploy --push --update-aliases {{version}} latest
+    uv run --group docs mike set-default --push latest
+
 # Everyday gate: runs everything incl. `cloud` (needs credentials in the env); coverage 100%.
 check: lint typecheck
     just test-cov

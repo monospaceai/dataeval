@@ -1,0 +1,46 @@
+name: Docs
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Docs version to deploy (e.g. 0.1). Defaults to the release tag's MAJOR.MINOR."
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - name: Configure git for mike
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Deploy versioned docs
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            docs_version="$INPUT_VERSION"
+          else
+            tag="${GITHUB_REF_NAME#v}"
+            docs_version="${tag%.*}"
+          fi
+          uv run --group docs mike deploy --push --update-aliases "$docs_version" latest
+          uv run --group docs mike set-default --push latest

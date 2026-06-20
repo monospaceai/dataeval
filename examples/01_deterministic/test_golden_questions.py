@@ -45,9 +45,8 @@ def test_untyped_result_set(case: EvalCase) -> None:
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])
 
 
-# Typed result set: same value as above, plus a column-type assertion. This variant also
-# fails if the model returns the right number with the wrong type (e.g. DOUBLE or VARCHAR),
-# which the untyped variant accepts.
+# Typed result set: assert the column types alongside the values. Fails if the right value
+# comes back with the wrong type (e.g. DOUBLE or VARCHAR).
 @eval_case(
     input="What is the total order amount?",
     expected={
@@ -63,8 +62,8 @@ def test_typed_result_set(case: EvalCase) -> None:
 
 
 # Gold query: the reference query's executed RESULT is the expected answer (execution
-# accuracy). The solver's SQL is phrased differently but yields the same rows, so it
-# passes — the comparison is on results, not on SQL text.
+# accuracy). The comparison is on the executed result, not the SQL text, so any query that
+# returns the same rows passes.
 @eval_case(
     input="What is the total order amount per customer?",
     expected={
@@ -81,7 +80,7 @@ def test_gold_query(case: EvalCase) -> None:
     assert_eval(case, solver, scorers=[ResultSetEquivalence()])
 
 
-# Expectation suite: assert structural properties of the result instead of exact rows.
+# Expectation suite: assert structural properties of the result.
 @eval_case(
     input="List every customer with their id and name.",
     expected={
@@ -95,6 +94,6 @@ def test_gold_query(case: EvalCase) -> None:
     platform=_PLATFORM,
 )
 def test_expectation_suite(case: EvalCase) -> None:
-    """Assert structural properties of the result instead of exact rows."""
+    """Assert structural properties of the result."""
     solver = CallableSolver(lambda c: "SELECT id, name FROM customers")
     assert_eval(case, solver, scorers=[ExpectationSuiteScorer()])
