@@ -45,7 +45,7 @@ def _seed_warehouse() -> Iterator[None]:
         "CAST(amount AS DECIMAL(10, 2)) AS amount "
         "FROM VALUES (1, 'Ada', 10.00), (2, 'Bo', 5.50), (3, 'Cy', 20.00) AS t(id, customer, amount)"
     )
-    if result.error is not None:
+    if result.error is not None:  # pragma: no cover
         msg = f"failed to seed Databricks temp view {_VIEW!r}: {result.error}"
         raise RuntimeError(msg)
     yield
