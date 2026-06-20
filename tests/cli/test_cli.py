@@ -72,6 +72,16 @@ class TestRun:
 
 @pytest.mark.unit
 class TestDoctor:
+    @pytest.fixture(autouse=True)
+    def _isolate_platform_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for var in (
+            "DATAEVAL_DUCKDB_PATH",
+            "DATAEVAL_POSTGRES_CONNINFO",
+            "DATABRICKS_SERVER_HOSTNAME",
+            "DATABRICKS_HTTP_PATH",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
     def test_ok_for_reachable_duckdb(self) -> None:
         result = runner.invoke(app, ["doctor", "--duckdb", ":memory:"])
         assert result.exit_code == 0
