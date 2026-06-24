@@ -30,9 +30,10 @@ The solver is a `CallableSolver` returning fixed SQL. `test_golden_questions.py`
 expected-types: an untyped result set (values only), a typed result set (values + column
 types), a `GoldQuery` (the reference query's *result* is compared, not its SQL text), and an
 `ExpectationSuite` (`row_count` / `not_null` / `unique`). `test_semantic_equivalence.py` shows
-`SemanticEquivalence` accepting AI SQL that differs syntactically from the gold query but is
-semantically equivalent — first by comparing normalized syntax trees, then by running the
-queries when the trees differ.
+`SemanticEquivalence` confirming AI SQL that differs syntactically from the gold query but means
+the same thing — by comparing normalized syntax trees, without running anything — and
+`query_equivalence()` adding an execution fallback that runs the queries when the trees can't
+confirm.
 
 ### 02_local_ai
 `PromptSolver` calls a self-hosted Ollama model through litellm.

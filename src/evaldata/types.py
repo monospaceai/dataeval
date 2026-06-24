@@ -552,25 +552,24 @@ class ScoreResult(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-# A three-valued equivalence outcome: a check may be unable to decide, so "unknown" is a
-# first-class value distinct from "not_equivalent".
-Equivalence = Literal["equivalent", "not_equivalent", "unknown"]
+# A semantic check either confirms equivalence or cannot decide; it never refutes, so "unknown"
+# means "could not confirm".
+Equivalence = Literal["equivalent", "unknown"]
 
-# The kinds of semantic-equivalence check; dispatch over this Literal is exhaustively checked.
-SemanticEquivalenceMethod = Literal["ast", "plan", "execution", "llm"]
+# The kinds of equivalence-deciding technique.
+EquivalenceMethod = Literal["ast", "plan", "execution", "llm"]
 
 
 class SemanticVerdict(BaseModel):
-    """One equivalence check's three-valued judgment on whether two queries are equivalent.
+    """One equivalence check's judgment on whether two queries are equivalent.
 
-    `equivalence` is `"equivalent"`/`"not_equivalent"` when the check decides, else `"unknown"`
-    (it could not decide). `diff` carries the structured difference when a check refutes;
-    `detail` is a human-readable note on how the verdict was reached.
+    `equivalence` is `"equivalent"` when the check confirms, else `"unknown"` (it could not
+    confirm). A verdict never carries a diff; a refutation surfaces on a result-set
+    `ScoreResult.diff`. `detail` is a human-readable note on how the verdict was reached.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    method: SemanticEquivalenceMethod
+    method: EquivalenceMethod
     equivalence: Equivalence
     detail: Annotated[str, Field(min_length=1)] | None = None
-    diff: ResultSetDiff | None = None

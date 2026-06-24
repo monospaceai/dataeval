@@ -1,18 +1,16 @@
 """Tests for `SemanticEquivalence` and its checks.
 
-`AstEquivalence` is SQLGlot-only (no warehouse); `ExecutionEquivalence` and the full ladder
-run against an in-process DuckDB engine.
+`AstEquivalence` is SQLGlot-only (no warehouse); `SemanticEquivalence`'s checks compare the
+queries, so these tests never execute a query.
 """
 
 import pytest
 
-from evaldata.platforms.duckdb import DuckDBAdapter
 from evaldata.scorers import QueryRunner, ScoreContext, Scorer
 from evaldata.scorers.semantic_equivalence import (
     SCORER_NAME,
     AstEquivalence,
     EquivalenceCheck,
-    ExecutionEquivalence,
     SemanticEquivalence,
     default_equivalence_checks,
 )
@@ -48,8 +46,8 @@ class _NullAdapter:
 class _FixedCheck:
     """An `EquivalenceCheck` returning a fixed verdict, counting how often it is consulted."""
 
-    def __init__(self, equivalence: str, *, name: str = "execution") -> None:
-        self.name = name
+    def __init__(self, equivalence: str, *, method: str = "ast") -> None:
+        self.method = method
         self.calls = 0
         self._equivalence = equivalence
 
@@ -57,7 +55,7 @@ class _FixedCheck:
         self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
     ) -> SemanticVerdict:
         self.calls += 1
-        return SemanticVerdict(method=self.name, equivalence=self._equivalence)  # type: ignore[arg-type]
+        return SemanticVerdict(method=self.method, equivalence=self._equivalence)  # type: ignore[arg-type]
 
 
 def _context(model: str, dialect: Dialect = "duckdb") -> ScoreContext:
@@ -237,10 +235,10 @@ class TestSemanticEquivalence:
     def test_is_a_scorer(self) -> None:
         assert isinstance(SemanticEquivalence(), Scorer)
 
-    def test_default_checks_are_ast_then_execution(self) -> None:
+    def test_default_checks_are_ast_only(self) -> None:
         checks = default_equivalence_checks()
         assert all(isinstance(check, EquivalenceCheck) for check in checks)
-        assert [check.name for check in checks] == ["ast", "execution"]
+        assert [check.method for check in checks] == ["ast"]
 
     def test_passes_when_a_check_confirms(self) -> None:
         case = _gold_case("SELECT a FROM t")
@@ -252,7 +250,7 @@ class TestSemanticEquivalence:
         case = _gold_case("SELECT 2 AS n")
         score = SemanticEquivalence([AstEquivalence()]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1 AS n"))
         assert score.passed is False
-        assert score.explanation == "no check could decide equivalence"
+        assert score.explanation == "no semantic check could confirm equivalence"
 
     def test_non_gold_expected_raises_type_error(self) -> None:
         case = _other_case(UntypedResultSet(rows=[{"n": 1}]))
@@ -260,8 +258,8 @@ class TestSemanticEquivalence:
             SemanticEquivalence().score(case, _OUTPUT, _RESULT, context=_context("SELECT 1 AS n"))
 
     def test_stops_at_first_decisive_verdict(self) -> None:
-        first = _FixedCheck("equivalent", name="ast")
-        second = _FixedCheck("not_equivalent", name="execution")
+        first = _FixedCheck("equivalent", method="ast")
+        second = _FixedCheck("equivalent", method="plan")
         case = _gold_case("SELECT 1")
         score = SemanticEquivalence([first, second]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1"))
         assert score.passed is True
@@ -270,73 +268,11 @@ class TestSemanticEquivalence:
         assert len(score.metadata["verdicts"]) == 1
 
     def test_falls_through_unknown_to_a_later_check(self) -> None:
-        first = _FixedCheck("unknown", name="ast")
-        second = _FixedCheck("not_equivalent", name="execution")
+        first = _FixedCheck("unknown", method="ast")
+        second = _FixedCheck("unknown", method="plan")
         case = _gold_case("SELECT 1")
         score = SemanticEquivalence([first, second]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1"))
         assert score.passed is False
         assert first.calls == 1
         assert second.calls == 1
-
-
-def _duckdb_context(model: str) -> ScoreContext:
-    return ScoreContext(queries=QueryRunner(DuckDBAdapter(), Sql(model), "duckdb", None))
-
-
-@pytest.mark.unit
-class TestExecutionEquivalence:
-    def test_matching_result_sets_confirm(self) -> None:
-        case = _gold_case("SELECT 1 AS n")
-        result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        verdict = ExecutionEquivalence().judge(case, _OUTPUT, result, context=_duckdb_context("SELECT 1 AS n"))
-        assert verdict.method == "execution"
-        assert verdict.equivalence == "equivalent"
-
-    def test_differing_result_sets_refute_with_diff(self) -> None:
-        case = _gold_case("SELECT 2 AS n")
-        result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        verdict = ExecutionEquivalence().judge(case, _OUTPUT, result, context=_duckdb_context("SELECT 1 AS n"))
-        assert verdict.equivalence == "not_equivalent"
-        assert verdict.diff is not None
-
-    def test_failed_gold_query_is_unknown(self) -> None:
-        case = _gold_case("SELECT * FROM no_such_table_xyz")
-        result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        verdict = ExecutionEquivalence().judge(case, _OUTPUT, result, context=_duckdb_context("SELECT 1 AS n"))
-        assert verdict.equivalence == "unknown"
-        assert verdict.detail is not None
-
-
-@pytest.mark.unit
-class TestLadder:
-    def test_ast_abstains_then_execution_confirms(self) -> None:
-        # `greatest` commutativity is not canonicalized by AST, so execution decides.
-        model = "SELECT greatest(a, b) AS n FROM (SELECT 1 AS a, 2 AS b)"
-        case = _gold_case("SELECT greatest(b, a) AS n FROM (SELECT 1 AS a, 2 AS b)")
-        result = ExecutionResult(rows=[{"n": 2}], latency_seconds=0.0)
-        output = SolverOutput(output=Sql(model))
-        score = SemanticEquivalence().score(case, output, result, context=_duckdb_context(model))
-        assert score.passed is True
-        verdicts = [(v["method"], v["equivalence"]) for v in score.metadata["verdicts"]]
-        assert verdicts == [("ast", "unknown"), ("execution", "equivalent")]
-
-    def test_ast_confirmation_skips_execution(self) -> None:
-        model = "SELECT 1 AS n"
-        case = _gold_case("SELECT 1 AS n")
-        result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        output = SolverOutput(output=Sql(model))
-        score = SemanticEquivalence().score(case, output, result, context=_duckdb_context(model))
-        assert score.passed is True
-        verdicts = [(v["method"], v["equivalence"]) for v in score.metadata["verdicts"]]
-        assert verdicts == [("ast", "equivalent")]
-
-    def test_execution_refutes_genuinely_different_queries(self) -> None:
-        model = "SELECT 1 AS n"
-        case = _gold_case("SELECT 2 AS n")
-        result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        output = SolverOutput(output=Sql(model))
-        score = SemanticEquivalence().score(case, output, result, context=_duckdb_context(model))
-        assert score.passed is False
-        assert score.diff is not None
-        verdicts = [(v["method"], v["equivalence"]) for v in score.metadata["verdicts"]]
-        assert verdicts == [("ast", "unknown"), ("execution", "not_equivalent")]
+        assert score.explanation == "no semantic check could confirm equivalence"

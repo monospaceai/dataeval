@@ -1,9 +1,9 @@
 """`SemanticEquivalence`: query-vs-query equivalence via a sequence of pluggable checks.
 
-Each `EquivalenceCheck` returns a three-valued `SemanticVerdict`; the scorer runs the checks
-in order and stops at the first decisive verdict, so a cheap structural confirmation can skip
-the warehouse entirely. `AstEquivalence` normalizes both queries' syntax trees with SQLGlot
-and compares them: it only ever confirms, never refutes; portable and execution-free.
+Each `EquivalenceCheck` returns a `SemanticVerdict`; every check compares the
+queries themselves rather than running them, so the scorer confirms equivalence or abstains but
+never refutes. `AstEquivalence` normalizes both queries' syntax trees with SQLGlot and compares
+them: portable and execution-free.
 """
 
 import functools
@@ -19,15 +19,14 @@ from sqlglot.optimizer.simplify import gen, simplify
 
 from evaldata.equivalence.semantic import combine
 from evaldata.scorers.context import ScoreContext
-from evaldata.scorers.result_set_equivalence import ResultSetEquivalence
 from evaldata.scorers.sql import Dialect
 from evaldata.types import (
+    EquivalenceMethod,
     EvalCase,
     ExecutionResult,
     GoldQuery,
     NormalizationError,
     ScoreResult,
-    SemanticEquivalenceMethod,
     SemanticVerdict,
     SolverOutput,
     Sql,
@@ -38,13 +37,13 @@ SCORER_NAME = "semantic_equivalence"
 
 @runtime_checkable
 class EquivalenceCheck(Protocol):
-    """One way of deciding query-vs-query equivalence; returns a verdict, never raises.
+    """One way of confirming equivalence by comparing the queries, not their results; never raises.
 
-    A check that cannot decide returns an `"unknown"` verdict, and emits only the values it can
-    assert with certainty (a structural check confirms or abstains, never refutes).
+    A check confirms equivalence (`"equivalent"`) or abstains (`"unknown"`); it never refutes,
+    so it cannot falsely reject a correct query.
     """
 
-    name: SemanticEquivalenceMethod
+    method: EquivalenceMethod
 
     def judge(
         self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
@@ -67,13 +66,13 @@ class AstEquivalence:
     """Confirms equivalence when both queries normalize to the same SQLGlot syntax tree.
 
     Matching normalized trees yield `"equivalent"`; anything else (trees differ, a parse
-    failure, or input that is not exactly one statement) yields `"unknown"`, never
-    `"not_equivalent"`. The normalization is schema-free: it fully reassociates commutative
+    failure, or input that is not exactly one statement) yields `"unknown"`, never a
+    refutation. The normalization is schema-free: it fully reassociates commutative
     arithmetic (`+`/`*`), boolean/bitwise chains, and `IN`-list order; other unhandled
     equivalences fall through as `"unknown"`.
     """
 
-    name: SemanticEquivalenceMethod = "ast"
+    method: EquivalenceMethod = "ast"
 
     def judge(
         self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
@@ -230,59 +229,27 @@ def _normalize_tree(tree: exp.Expression, dialect: Dialect) -> exp.Expression:
     return _canonicalize(expression)  # second pass converges to a fixpoint
 
 
-class ExecutionEquivalence:
-    """Decides equivalence by running both queries and diffing their result sets.
-
-    Delegates to `ResultSetEquivalence`, so the comparison runs in-platform with the case's
-    `ComparisonConfig` (row order, NULL, float tolerance). Matching result sets yield
-    `"equivalent"`, a computed difference yields `"not_equivalent"` (carrying the diff), and a
-    query/budget failure yields `"unknown"`. Unlike a structural check this can refute, but on
-    a single dataset a coincidental match is its own (accepted) limit.
-    """
-
-    name: SemanticEquivalenceMethod = "execution"
-
-    def judge(
-        self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
-    ) -> SemanticVerdict:
-        """Diff the model result against the gold query's result set in-platform.
-
-        Args:
-            case: The eval case, carrying the gold query and comparison config.
-            output: The solver output, forwarded to `ResultSetEquivalence`.
-            result: The executed model result, diffed against the gold query.
-            context: The score context, carrying the budget-aware query runner.
-
-        Returns:
-            `"not_equivalent"` (with `diff`) when the result sets differ, `"equivalent"` when
-            they match, or `"unknown"` when the comparison could not run.
-        """
-        score = ResultSetEquivalence().score(case, output, result, context=context)
-        if score.diff is not None:
-            return SemanticVerdict(method="execution", equivalence="not_equivalent", diff=score.diff)
-        if score.passed:
-            return SemanticVerdict(method="execution", equivalence="equivalent")
-        return SemanticVerdict(method="execution", equivalence="unknown", detail=score.explanation)
-
-
 def default_equivalence_checks() -> list[EquivalenceCheck]:
     """The default checks, cheapest and most portable first.
 
     Returns:
-        A fresh list of the default `EquivalenceCheck`s: `AstEquivalence` then
-        `ExecutionEquivalence`.
+        A fresh list of the default `EquivalenceCheck`s: just `AstEquivalence`.
     """
-    return [AstEquivalence(), ExecutionEquivalence()]
+    return [AstEquivalence()]
 
 
 class SemanticEquivalence:
-    """Scores a gold-query case by running equivalence checks until one decides."""
+    """Scores a gold-query case with checks that compare the queries themselves.
+
+    It never runs a query and never refutes, so it confirms equivalence or abstains. The first
+    check that confirms wins; if none confirm, the result fails as undecided.
+    """
 
     def __init__(self, checks: Sequence[EquivalenceCheck] | None = None) -> None:
         """Bind the scorer to an ordered list of checks.
 
         Args:
-            checks: The checks to run, in priority order; the first decisive verdict wins.
+            checks: The checks to run, in priority order; the first that confirms wins.
                 Defaults to `default_equivalence_checks()` when omitted.
         """
         self._checks = list(checks) if checks is not None else default_equivalence_checks()
@@ -290,7 +257,7 @@ class SemanticEquivalence:
     def score(
         self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
     ) -> ScoreResult:
-        """Run the checks in order, stopping at the first decisive verdict.
+        """Run the checks in order, stopping at the first that confirms equivalence.
 
         Args:
             case: The eval case; `expected` must be a `GoldQuery` (query-vs-query comparison).
@@ -299,8 +266,8 @@ class SemanticEquivalence:
             context: The score context, carrying the model SQL, dialect, and query runner.
 
         Returns:
-            A `ScoreResult` reflecting the first decisive verdict, or a failing result when no
-            check could decide.
+            A passing `ScoreResult` when a check confirms equivalence, else a failing result
+            (no check could confirm).
 
         Raises:
             TypeError: If `case.expected` is not a `GoldQuery`.
@@ -312,6 +279,6 @@ class SemanticEquivalence:
         for check in self._checks:
             verdict = check.judge(case, output, result, context=context)
             verdicts.append(verdict)
-            if verdict.equivalence != "unknown":
+            if verdict.equivalence == "equivalent":
                 break
         return combine(verdicts, scorer=SCORER_NAME)
