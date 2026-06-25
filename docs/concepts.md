@@ -45,6 +45,11 @@ A [scorer](reference/scorers.md) judges the solver's result against the case's `
 
 - **`ResultSetEquivalence`** compares result rows — for the untyped, typed, and gold-query
   shapes. See [Equivalence](reference/equivalence.md) for how the row diff works.
+- **`SemanticEquivalence`** compares the AI's query against a gold query without running either:
+  it confirms a match or abstains when it can't — it never refutes. `query_equivalence()`
+  composes it with `ResultSetEquivalence`, so a confirmed match skips running the queries while
+  everything else is decided by running both and comparing the results. See
+  [Check semantic equivalence](guides/semantic-equivalence.md).
 - **`ExpectationSuiteScorer`** evaluates an expectation suite's structural checks.
 
 Pass a list to `assert_eval`, so a single case can be scored several ways.

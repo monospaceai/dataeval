@@ -4,7 +4,13 @@ from typing import TYPE_CHECKING, Any
 
 from evaldata.core import assert_eval
 from evaldata.loaders import eval_case
-from evaldata.scorers import ExpectationSuiteScorer, ResultSetEquivalence, SemanticEquivalence
+from evaldata.scorers import (
+    ExpectationSuiteScorer,
+    FirstDecisive,
+    ResultSetEquivalence,
+    SemanticEquivalence,
+    query_equivalence,
+)
 from evaldata.solvers import CallableSolver
 from evaldata.types import EvalCase, PlatformRef
 
@@ -15,11 +21,13 @@ __all__ = [
     "CallableSolver",
     "EvalCase",
     "ExpectationSuiteScorer",
+    "FirstDecisive",
     "PlatformRef",
     "ResultSetEquivalence",
     "SemanticEquivalence",
     "assert_eval",
     "eval_case",
+    "query_equivalence",
 ]
 
 

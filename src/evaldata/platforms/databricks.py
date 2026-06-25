@@ -8,7 +8,7 @@ from typing import Any, Self
 import databricks.sql
 from databricks.sdk.core import Config
 
-from evaldata.platforms.base import rows_or_error
+from evaldata.platforms.base import execution_error, rows_or_error
 from evaldata.types import Column, ExecutionError, ExecutionResult, SqlType
 
 
@@ -25,8 +25,7 @@ class DatabricksAdapter:
     ) -> None:
         """Open a Databricks SQL connection.
 
-        Credentials are not passed here: they resolve from the ambient environment through
-        the Databricks SDK's unified authentication, however the caller configured it.
+        Credentials are not passed here.
 
         Args:
             server_hostname: The workspace hostname (no scheme), e.g. `dbc-xxxx.cloud.databricks.com`.
@@ -97,8 +96,7 @@ class DatabricksAdapter:
             rows_raw = cursor.fetchall() if description is not None and not has_duplicates else []
         except Exception as e:  # noqa: BLE001 - execute must never raise; failures return as ExecutionResult.error
             elapsed = time.perf_counter() - start
-            error = ExecutionError(kind="query_failed", message=str(e))
-            return ExecutionResult(rows=[], schema=None, latency_seconds=elapsed, error=error)
+            return ExecutionResult(rows=[], schema=None, latency_seconds=elapsed, error=execution_error(e))
         finally:
             self._cursor = None
             with contextlib.suppress(Exception):

@@ -367,6 +367,22 @@ class EvalCase(BaseModel):
         return self
 
 
+class Error(BaseModel):
+    """Base for the typed failures returned as values, not raised.
+
+    Holds the fields every typed error shares. Subclasses add a `kind` discriminator and any
+    domain-specific structured fields (an `ExecutionError`'s `sqlstate`, a `SolverError`'s
+    `provider`). `cause` keeps the original exception — and its traceback — for in-process
+    debugging and logging; it is excluded from serialization, so reports carry only the
+    structured surface.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    message: Annotated[str, Field(min_length=1)]
+    cause: Exception | None = Field(default=None, exclude=True, repr=False)
+
+
 SolverErrorKind = Literal[
     "timeout",
     "rate_limit",
@@ -380,13 +396,10 @@ SolverErrorKind = Literal[
 ]
 
 
-class SolverError(BaseModel):
+class SolverError(Error):
     """A typed, expected failure from a Solver call: returned as a value, not raised."""
 
-    model_config = ConfigDict(extra="forbid")
-
     kind: SolverErrorKind
-    message: Annotated[str, Field(min_length=1)]
     provider: str | None = None
 
 
@@ -426,27 +439,30 @@ class SolverOutput(BaseModel):
 ExecutionErrorKind = Literal["query_failed", "budget_exceeded", "duplicate_columns", "type_probe_failed"]
 
 
-class ExecutionError(BaseModel):
+class ExecutionError(Error):
     """A typed failure from running SQL against a platform, returned as a value, not raised.
 
-    `kind` is a stable, low-cardinality classifier; `message` is the human-readable detail;
-    `sqlstate` carries the driver's SQLSTATE code when one is reported.
+    `kind` is a stable, low-cardinality classifier. `sqlstate` carries the driver's SQLSTATE
+    code when one is reported; `condition` carries an engine error condition/class (e.g.
+    Spark's `TABLE_OR_VIEW_NOT_FOUND`) when the driver exposes one, since not every engine
+    reports SQLSTATE; `params` carries the engine's structured message parameters when
+    available. All three are `None` when the driver does not report them.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
     kind: ExecutionErrorKind
-    message: Annotated[str, Field(min_length=1)]
     sqlstate: str | None = None
+    condition: str | None = None
+    params: dict[str, str] | None = None
 
 
-class NormalizeError(BaseModel):
-    """A typed failure from parsing or normalizing SQL for comparison, returned as a value."""
+class NormalizationError(Error):
+    """A typed failure from parsing or normalizing SQL for comparison, returned as a value.
 
-    model_config = ConfigDict(extra="forbid")
+    `non_deterministic` marks a query whose result is not a function of its inputs (e.g.
+    `rand()`, `current_timestamp`).
+    """
 
-    kind: Literal["parse_failed", "not_single_statement", "normalize_failed"]
-    message: Annotated[str, Field(min_length=1)]
+    kind: Literal["parse_failed", "not_single_statement", "normalize_failed", "non_deterministic"]
 
 
 class ExecutionResult(BaseModel):
@@ -536,25 +552,24 @@ class ScoreResult(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-# A three-valued equivalence outcome: a check may be unable to decide, so "unknown" is a
-# first-class value distinct from "not_equivalent".
-Equivalence = Literal["equivalent", "not_equivalent", "unknown"]
+# A semantic check either confirms equivalence or cannot decide; it never refutes, so "unknown"
+# means "could not confirm".
+Equivalence = Literal["equivalent", "unknown"]
 
-# The kinds of semantic-equivalence check; dispatch over this Literal is exhaustively checked.
-SemanticEquivalenceMethod = Literal["ast", "plan", "execution", "llm"]
+# The kinds of equivalence-deciding technique.
+EquivalenceMethod = Literal["ast", "plan", "execution", "llm"]
 
 
 class SemanticVerdict(BaseModel):
-    """One equivalence check's three-valued judgment on whether two queries are equivalent.
+    """One equivalence check's judgment on whether two queries are equivalent.
 
-    `equivalence` is `"equivalent"`/`"not_equivalent"` when the check decides, else `"unknown"`
-    (it could not decide). `diff` carries the structured difference when a check refutes;
-    `detail` is a human-readable note on how the verdict was reached.
+    `equivalence` is `"equivalent"` when the check confirms, else `"unknown"` (it could not
+    confirm). A verdict never carries a diff; a refutation surfaces on a result-set
+    `ScoreResult.diff`. `detail` is a human-readable note on how the verdict was reached.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    method: SemanticEquivalenceMethod
+    method: EquivalenceMethod
     equivalence: Equivalence
     detail: Annotated[str, Field(min_length=1)] | None = None
-    diff: ResultSetDiff | None = None
