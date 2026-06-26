@@ -246,11 +246,17 @@ class TestSemanticEquivalence:
         assert score.scorer == SCORER_NAME
         assert score.passed is True
 
+    def test_confirmed_result_is_proven(self) -> None:
+        case = _gold_case("SELECT a FROM t")
+        score = SemanticEquivalence().score(case, _OUTPUT, _RESULT, context=_context("SELECT a FROM t"))
+        assert score.basis == "proven"
+
     def test_inconclusive_when_no_check_decides(self) -> None:
         case = _gold_case("SELECT 2 AS n")
         score = SemanticEquivalence([AstEquivalence()]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1 AS n"))
         assert score.verdict == "inconclusive"
         assert score.passed is False
+        assert score.basis is None
         assert score.explanation == "no semantic check could confirm equivalence"
 
     def test_non_gold_expected_raises_type_error(self) -> None:

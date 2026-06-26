@@ -57,6 +57,7 @@ class TestJudgeEquivalence:
         model = "select NAME from t where id > 1 and country = 'US'"
         score = composition.score(case, _OUTPUT, _RESULT, context=_context(model))
         assert score.passed is True
+        assert score.basis == "proven"
         assert _trail(score) == ["semantic_equivalence"]
         assert judge._llm.prompts == []
 
@@ -66,6 +67,7 @@ class TestJudgeEquivalence:
         case = _gold_case("SELECT 2 AS n")
         score = composition.score(case, _OUTPUT, _RESULT, context=_context("SELECT 1 AS n"))
         assert score.verdict == "pass"
+        assert score.basis == "judged"
         assert _trail(score) == ["semantic_equivalence", "llm_judge"]
 
     def test_ast_inconclusive_then_judge_fails(self) -> None:

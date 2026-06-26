@@ -30,6 +30,9 @@ SQLDialect = Literal[
 # test could neither confirm nor refute.
 Verdict = Literal["pass", "fail", "inconclusive"]
 
+# Evidence strength of a verdict: sound on all data / observed on the data run / probabilistic judgment.
+Basis = Literal["proven", "observed", "judged"]
+
 # A normalized graded magnitude in `[0.0, 1.0]`, higher-is-better.
 Score = Annotated[float, Field(ge=0.0, le=1.0)]
 
@@ -567,8 +570,9 @@ class ScoreResult(BaseModel):
 
     `verdict` is the scorer-level test outcome: `"pass"`, `"fail"`, or `"inconclusive"`
     (the test could neither confirm nor refute). `score` is an optional normalized graded
-    magnitude in `[0.0, 1.0]`, higher-is-better; it must be absent when the verdict is
-    `"inconclusive"`, since an undecided result carries no graded magnitude.
+    magnitude in `[0.0, 1.0]`, higher-is-better. `basis` is the evidence strength behind the
+    verdict, stamped by the scorer that decided it. Both `score` and `basis` must be absent
+    when the verdict is `"inconclusive"`, since an undecided result carries no evidence.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -576,6 +580,7 @@ class ScoreResult(BaseModel):
     scorer: Annotated[str, Field(min_length=1)]
     verdict: Verdict
     score: Score | None = None
+    basis: Basis | None = None
     diff: ResultSetDiff | None = None
     outcomes: list[ExpectationOutcome] = Field(default_factory=list)
     explanation: Annotated[str, Field(min_length=1)] | None = None
@@ -587,17 +592,17 @@ class ScoreResult(BaseModel):
         return self.verdict == "pass"
 
     @model_validator(mode="after")
-    def _reject_score_when_inconclusive(self) -> "ScoreResult":
-        """Reject a graded `score` on an inconclusive verdict.
+    def _inconclusive_carries_no_evidence(self) -> "ScoreResult":
+        """Reject a graded `score` or a `basis` on an inconclusive verdict.
 
         Returns:
             The validated `ScoreResult`.
 
         Raises:
-            ValueError: If `verdict` is `"inconclusive"` and `score` is set.
+            ValueError: If `verdict` is `"inconclusive"` and `score` or `basis` is set.
         """
-        if self.verdict == "inconclusive" and self.score is not None:
-            msg = "an inconclusive ScoreResult cannot carry a graded score"
+        if self.verdict == "inconclusive" and (self.score is not None or self.basis is not None):
+            msg = "an inconclusive ScoreResult cannot carry a graded score or a basis"
             raise ValueError(msg)
         return self
 

@@ -101,6 +101,21 @@ class TestRenderFailure:
         msg = render_failure(_case(), out, result, [score])
         assert "INTEGER[]" in msg and "VARCHAR[]" in msg
 
+    def test_annotates_basis_when_present(self) -> None:
+        out = SolverOutput(output="SELECT 1")
+        result = ExecutionResult(rows=[], latency_seconds=0.0)
+        score = ScoreResult(scorer="result_set_equivalence", verdict="fail", basis="observed")
+        msg = render_failure(_case(), out, result, [score])
+        assert "FAIL (observed)" in msg
+
+    def test_omits_basis_annotation_when_absent(self) -> None:
+        out = SolverOutput(output="SELECT 1")
+        result = ExecutionResult(rows=[], latency_seconds=0.0)
+        score = ScoreResult(scorer="result_set_equivalence", verdict="fail")
+        msg = render_failure(_case(), out, result, [score])
+        assert "FAIL" in msg
+        assert "(" not in msg.split("FAIL")[1].split("\n")[0]
+
     def test_renders_execution_error(self) -> None:
         out = SolverOutput(output="SELECT * FROM nope")
         result = ExecutionResult(

@@ -60,6 +60,7 @@ class TestLlmJudge:
         result = LlmJudge(model=stub, criteria="is it correct?").score(_case(), _OUTPUT, _RESULT, context=_context())
         assert result.verdict == "pass"
         assert result.score == pytest.approx(0.9)
+        assert result.basis == "judged"
         assert result.explanation == "great"
 
     def test_score_below_threshold_fails(self) -> None:
@@ -67,12 +68,14 @@ class TestLlmJudge:
         result = LlmJudge(model=stub, criteria="c").score(_case(), _OUTPUT, _RESULT, context=_context())
         assert result.verdict == "fail"
         assert result.score == pytest.approx(0.2)
+        assert result.basis == "judged"
 
     def test_malformed_output_is_inconclusive(self) -> None:
         err = LlmError(kind="malformed_output", message="grader returned malformed output")
         result = LlmJudge(model=StubLlm(err), criteria="c").score(_case(), _OUTPUT, _RESULT, context=_context())
         assert result.verdict == "inconclusive"
         assert result.score is None
+        assert result.basis is None
         assert "grader call failed" in (result.explanation or "")
         assert result.metadata["error"]["kind"] == "malformed_output"
 

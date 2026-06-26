@@ -972,6 +972,28 @@ class TestScoreResult:
         result = ScoreResult(scorer="x", verdict="pass", score=0.75)
         assert result.score == 0.75
 
+    def test_minimal_pass_has_no_basis(self) -> None:
+        assert ScoreResult(scorer="x", verdict="pass").basis is None
+
+    @pytest.mark.parametrize("basis", ["proven", "observed", "judged"])
+    def test_pass_carries_basis(self, basis: str) -> None:
+        result = ScoreResult.model_validate({"scorer": "x", "verdict": "pass", "basis": basis})
+        assert result.basis == basis
+
+    @pytest.mark.parametrize("basis", ["proven", "observed", "judged"])
+    def test_fail_carries_basis(self, basis: str) -> None:
+        result = ScoreResult.model_validate({"scorer": "x", "verdict": "fail", "basis": basis})
+        assert result.basis == basis
+
+    def test_rejects_unknown_basis(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult.model_validate({"scorer": "x", "verdict": "pass", "basis": "guessed"})
+
+    def test_json_round_trip_with_basis(self) -> None:
+        result = ScoreResult(scorer="x", verdict="pass", basis="proven")
+        restored = ScoreResult.model_validate_json(result.model_dump_json())
+        assert restored == result
+
     def test_full_construction(self) -> None:
         diff = ResultSetDiff(
             expected_row_count=10,
@@ -1069,6 +1091,10 @@ class TestScoreResult:
     def test_rejects_score_when_inconclusive(self) -> None:
         with pytest.raises(ValidationError):
             ScoreResult(scorer="x", verdict="inconclusive", score=0.5)
+
+    def test_rejects_basis_when_inconclusive(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult.model_validate({"scorer": "x", "verdict": "inconclusive", "basis": "proven"})
 
     def test_rejects_score_above_one(self) -> None:
         with pytest.raises(ValidationError):

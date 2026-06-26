@@ -147,7 +147,7 @@ class ResultSetEquivalence:
             type_mismatches=type_mismatches,
             column_mismatches=[],
         )
-        return ScoreResult(scorer=SCORER_NAME, verdict="pass" if diff is None else "fail", diff=diff)
+        return ScoreResult(scorer=SCORER_NAME, verdict="pass" if diff is None else "fail", basis="observed", diff=diff)
 
 
 def _gold_failure(error: ExecutionError) -> ScoreResult:
@@ -325,7 +325,7 @@ def _keyed_score(
         type_mismatches=type_mismatches,
         column_mismatches=column_mismatches,
     )
-    return ScoreResult(scorer=SCORER_NAME, verdict="pass" if diff is None else "fail", diff=diff)
+    return ScoreResult(scorer=SCORER_NAME, verdict="pass" if diff is None else "fail", basis="observed", diff=diff)
 
 
 _Samples = tuple[list[dict[str, Any]], list[dict[str, Any]]]

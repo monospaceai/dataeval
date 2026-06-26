@@ -79,9 +79,11 @@ class ExpectationSuiteScorer:
         outcomes = [_evaluate_one(e, checked, context.queries) for e in expected.expectations]
         failures = [o for o in outcomes if not o.passed]
         if not failures:
-            return ScoreResult(scorer=SCORER_NAME, verdict="pass", outcomes=outcomes)
+            return ScoreResult(scorer=SCORER_NAME, verdict="pass", basis="observed", outcomes=outcomes)
         explanation = "\n".join([f"{len(failures)} expectation(s) failed:", *(f"  - {o.detail}" for o in failures)])
-        return ScoreResult(scorer=SCORER_NAME, verdict="fail", outcomes=outcomes, explanation=explanation)
+        return ScoreResult(
+            scorer=SCORER_NAME, verdict="fail", basis="observed", outcomes=outcomes, explanation=explanation
+        )
 
 
 def _evaluate_one(expectation: Expectation, result: ExecutionResult, queries: QueryRunner) -> ExpectationOutcome:

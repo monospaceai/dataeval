@@ -108,6 +108,7 @@ class LlmJudge:
             scorer=SCORER_NAME,
             verdict=verdict,
             score=clamped,
+            basis="judged",
             explanation=completion.parsed.reason or None,
             metadata=metadata,
         )

@@ -27,4 +27,4 @@ def combine(verdicts: list[SemanticVerdict], *, scorer: str) -> ScoreResult:
             explanation="no semantic check could confirm equivalence",
             metadata=metadata,
         )
-    return ScoreResult(scorer=scorer, verdict="pass", metadata=metadata)
+    return ScoreResult(scorer=scorer, verdict="pass", basis="proven", metadata=metadata)
