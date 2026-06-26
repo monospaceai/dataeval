@@ -607,7 +607,7 @@ class ScoreResult(BaseModel):
 Equivalence = Literal["equivalent", "unknown"]
 
 # The kinds of equivalence-deciding technique.
-EquivalenceMethod = Literal["ast", "plan", "execution", "llm"]
+EquivalenceMethod = Literal["ast"]
 
 
 class SemanticVerdict(BaseModel):

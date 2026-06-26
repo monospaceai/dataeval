@@ -50,28 +50,12 @@ class TestLiteLlm:
         # The native path sends the prompt verbatim, with no JSON-schema instruction appended.
         assert captured["messages"][0]["content"] == "q"
 
-    def test_non_native_prompted_json_parse(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        captured: dict = {}
-        _patch(monkeypatch, _response('{"value": "ok"}'), captured, native=False)
+    def test_non_native_structured_is_bad_request(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, _response('{"value": "ok"}'), native=False)
         out = LiteLlm("local/m").complete("q", response_format=_Reply)
-        assert isinstance(out, Completion)
-        assert out.parsed.value == "ok"
-        assert "response_format" not in captured
-        # The non-native path appends a JSON-schema instruction to the prompt.
-        assert "q" in captured["messages"][0]["content"]
-        assert "schema" in captured["messages"][0]["content"].lower()
-
-    def test_non_native_tolerates_json_fence(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _patch(monkeypatch, _response('```json\n{"value": "fenced"}\n```'), native=False)
-        out = LiteLlm("local/m").complete("q", response_format=_Reply)
-        assert isinstance(out, Completion)
-        assert out.parsed.value == "fenced"
-
-    def test_non_native_tolerates_surrounding_prose(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _patch(monkeypatch, _response('Here you go: {"value": "x"} done'), native=False)
-        out = LiteLlm("local/m").complete("q", response_format=_Reply)
-        assert isinstance(out, Completion)
-        assert out.parsed.value == "x"
+        assert isinstance(out, LlmError)
+        assert out.kind == "bad_request"
+        assert "structured output" in out.message
 
     def test_malformed_native_is_malformed_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _patch(monkeypatch, _response("not json at all"), native=True)

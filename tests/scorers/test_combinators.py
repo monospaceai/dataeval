@@ -89,32 +89,54 @@ class TestFirstDecisive:
         assert second.calls == 0
         assert score.metadata["first_decisive"] == [{"scorer": "first", "passed": True, "verdict": "pass"}]
 
-    def test_all_failing_returns_last_member_and_preserves_diff(self) -> None:
+    def test_first_failing_member_short_circuits_and_preserves_diff(self) -> None:
         diff = ResultSetDiff(expected_row_count=1, actual_row_count=0, missing_row_count=1)
-        first = _FakeScorer(_failing("first"))
-        second = _FakeScorer(_failing("second", diff=diff))
+        first = _FakeScorer(_failing("first", diff=diff))
+        second = _FakeScorer(_passing("second"))
         case = _gold_case("SELECT 1")
         score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
         assert score.passed is False
-        assert score.scorer == "second"
+        assert score.scorer == "first"
         assert score.diff is diff
+        assert first.calls == 1
+        assert second.calls == 0
+        assert score.metadata["first_decisive"] == [{"scorer": "first", "passed": False, "verdict": "fail"}]
+
+    def test_all_inconclusive_returns_last_member(self) -> None:
+        first = _FakeScorer(_inconclusive("first"))
+        second = _FakeScorer(_inconclusive("second"))
+        case = _gold_case("SELECT 1")
+        score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
+        assert score.verdict == "inconclusive"
+        assert score.scorer == "second"
         assert first.calls == 1
         assert second.calls == 1
         assert score.metadata["first_decisive"] == [
-            {"scorer": "first", "passed": False, "verdict": "fail"},
-            {"scorer": "second", "passed": False, "verdict": "fail"},
+            {"scorer": "first", "passed": False, "verdict": "inconclusive"},
+            {"scorer": "second", "passed": False, "verdict": "inconclusive"},
         ]
 
-    def test_trail_distinguishes_inconclusive_from_fail(self) -> None:
+    def test_inconclusive_then_failing_returns_fail(self) -> None:
         first = _FakeScorer(_inconclusive("first"))
         second = _FakeScorer(_failing("second"))
         case = _gold_case("SELECT 1")
         score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
         assert score.passed is False
+        assert score.scorer == "second"
         assert score.metadata["first_decisive"] == [
             {"scorer": "first", "passed": False, "verdict": "inconclusive"},
             {"scorer": "second", "passed": False, "verdict": "fail"},
         ]
+
+    def test_failing_member_is_not_overridden_by_a_later_passing_member(self) -> None:
+        first = _FakeScorer(_failing("first"))
+        second = _FakeScorer(_passing("second"))
+        case = _gold_case("SELECT 1")
+        score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
+        assert score.verdict == "fail"
+        assert score.scorer == "first"
+        assert first.calls == 1
+        assert second.calls == 0
 
     def test_merges_into_existing_metadata(self) -> None:
         result = ScoreResult(scorer="only", verdict="pass", metadata={"verdicts": []})

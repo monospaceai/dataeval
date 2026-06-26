@@ -260,7 +260,7 @@ class TestSemanticEquivalence:
 
     def test_stops_at_first_decisive_verdict(self) -> None:
         first = _FixedCheck("equivalent", method="ast")
-        second = _FixedCheck("equivalent", method="plan")
+        second = _FixedCheck("equivalent", method="ast")
         case = _gold_case("SELECT 1")
         score = SemanticEquivalence([first, second]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1"))
         assert score.passed is True
@@ -270,7 +270,7 @@ class TestSemanticEquivalence:
 
     def test_falls_through_unknown_to_a_later_check(self) -> None:
         first = _FixedCheck("unknown", method="ast")
-        second = _FixedCheck("unknown", method="plan")
+        second = _FixedCheck("unknown", method="ast")
         case = _gold_case("SELECT 1")
         score = SemanticEquivalence([first, second]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1"))
         assert score.verdict == "inconclusive"

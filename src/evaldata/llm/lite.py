@@ -1,6 +1,5 @@
 """`LiteLlm`: the litellm-backed `Llm`. The only module that imports `litellm`."""
 
-import re
 import time
 
 import litellm
@@ -8,30 +7,6 @@ from pydantic import ValidationError
 
 from evaldata.llm.base import Completion, T, TextCompletion, Usage
 from evaldata.types import LlmError, ProviderErrorKind
-
-_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
-_JSON_OBJECT_RE = re.compile(r"\{[\s\S]*\}")
-
-
-def _extract_json(content: str | None) -> str:
-    """Pull a JSON object out of a free-text reply, tolerating a Markdown code fence.
-
-    Args:
-        content: The raw model reply, possibly fenced or surrounded by prose.
-
-    Returns:
-        The JSON text: a fenced block's contents, else the first `{...}` object, else `"{}"`
-        when neither is found (so downstream validation fails like a malformed reply).
-    """
-    if not content:
-        return "{}"
-    fence = _JSON_FENCE_RE.search(content)
-    if fence is not None and fence.group(1).strip():
-        return fence.group(1).strip()
-    obj = _JSON_OBJECT_RE.search(content)
-    if obj is not None:
-        return obj.group(0)
-    return content.strip() or "{}"
 
 
 class LiteLlm:
@@ -61,9 +36,9 @@ class LiteLlm:
     def complete(self, prompt: str, *, response_format: type[T]) -> Completion[T] | LlmError:
         """Complete `prompt`, parsing the reply into `response_format`.
 
-        Uses the provider's native structured-output mode when the model supports it; otherwise
-        appends an instruction to reply with JSON matching the schema and parses the JSON out of
-        the free-text reply. Expected provider failures are mapped to a typed `LlmError`.
+        Requires the model's provider to support native structured output: a model that does not
+        yields a `bad_request` `LlmError`. Expected provider failures are mapped to a typed
+        `LlmError`.
 
         Args:
             prompt: The user prompt to send.
@@ -72,26 +47,21 @@ class LiteLlm:
         Returns:
             A `Completion` carrying the parsed model and telemetry, or an `LlmError`.
         """
-        native = litellm.supports_response_schema(model=self._model)
-        if native:
-            content_prompt = prompt
-        else:
-            schema = response_format.model_json_schema()
-            content_prompt = (
-                f"{prompt}\n\nReply with a single JSON object whose fields hold the answer, and "
-                f"nothing else — no markdown, no schema. The object must conform to this JSON "
-                f"schema:\n{schema}"
+        if not litellm.supports_response_schema(model=self._model):
+            return LlmError(
+                kind="bad_request",
+                message=f"grader model {self._model!r} does not support structured output; use a "
+                f"structured-output-capable model",
+                provider=None,
             )
-        extra = {"response_format": response_format} if native else {}
-        called = self._call(content_prompt, extra)
+        called = self._call(prompt, {"response_format": response_format})
         if isinstance(called, LlmError):
             return called
         response, elapsed = called
 
         content = response.choices[0].message.content
-        raw_json = (content or "{}") if native else _extract_json(content)
         try:
-            parsed = response_format.model_validate_json(raw_json)
+            parsed = response_format.model_validate_json(content or "{}")
         except ValidationError as e:
             return LlmError(
                 kind="malformed_output",

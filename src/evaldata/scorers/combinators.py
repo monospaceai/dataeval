@@ -1,4 +1,4 @@
-"""`FirstDecisive`: a generic scorer combinator running members until one passes."""
+"""`FirstDecisive`: a generic scorer combinator running members until one decides."""
 
 from collections.abc import Sequence
 
@@ -8,11 +8,12 @@ from evaldata.types import EvalCase, ExecutionResult, ScoreResult, SolverOutput
 
 
 class FirstDecisive:
-    """Runs member scorers in order; the first that passes wins, else the last decides.
+    """Runs member scorers in order; the first that decides wins, else the last result stands.
 
-    The first member whose `ScoreResult.passed` is true is returned immediately; if none pass,
-    the last member's result is returned, so its diagnostics (e.g. a diff) surface. Order
-    members so an earlier one's failure means "couldn't decide", not "refuted".
+    The combinator continues only while a member is `inconclusive`; the first member to return a
+    decisive verdict (`pass` or `fail`) is returned immediately, so a later member cannot override
+    an earlier one's decision. If every member is `inconclusive`, the last member's result is
+    returned, so its diagnostics (e.g. a diff) surface.
     """
 
     def __init__(self, scorers: Sequence[Scorer]) -> None:
@@ -32,7 +33,7 @@ class FirstDecisive:
     def score(
         self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
     ) -> ScoreResult:
-        """Run members in order, returning the first that passes (later members not consulted), else the last.
+        """Run members in order, returning the first decisive result (later members not consulted), else the last.
 
         The returned result carries a `metadata["first_decisive"]` trail of
         `{"scorer", "passed", "verdict"}` for each member that actually ran.
@@ -44,15 +45,16 @@ class FirstDecisive:
             context: The score context, forwarded to each member.
 
         Returns:
-            The first passing member's `ScoreResult`, or the last member's result when none
-            pass, with the `"first_decisive"` trail merged into its metadata.
+            The first decisive member's `ScoreResult` (verdict `pass` or `fail`), or the last
+            member's result when every member is `inconclusive`, with the `"first_decisive"` trail
+            merged into its metadata.
         """
         trail: list[dict[str, object]] = []
         decided: ScoreResult | None = None
         for scorer in self._scorers:
             decided = scorer.score(case, output, result, context=context)
             trail.append({"scorer": decided.scorer, "passed": decided.passed, "verdict": decided.verdict})
-            if decided.passed:
+            if decided.verdict != "inconclusive":
                 break
         assert decided is not None
         return decided.model_copy(update={"metadata": {**decided.metadata, "first_decisive": trail}})
