@@ -20,6 +20,7 @@ adapters are planned.
 
 - **[Getting started](getting-started.md)** — write and run your first eval in a few minutes.
 - **Guides** — evaluate [a local Ollama model](guides/local-ollama.md),
-  [a hosted model](guides/hosted-model.md), or [against Databricks](guides/databricks.md).
+  [a hosted model](guides/hosted-model.md), or [against Databricks](guides/databricks.md); check
+  [semantic equivalence](guides/semantic-equivalence.md) or [score with an LLM judge](guides/llm-judge.md).
 - **[Concepts](concepts.md)** — the building blocks: cases, solvers, scorers, platforms.
 - **[API reference](reference/index.md)** — the public API, generated from docstrings.

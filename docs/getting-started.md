@@ -110,4 +110,5 @@ This is the runnable example from `examples/01_deterministic/` in the repo.
 - Swap the solver for a real model — [a local Ollama model](guides/local-ollama.md) or
   [a hosted model](guides/hosted-model.md).
 - Run against a warehouse — [Databricks](guides/databricks.md).
+- Score with a grader model — [an LLM judge](guides/llm-judge.md).
 - Understand the building blocks in depth — [Concepts](concepts.md).

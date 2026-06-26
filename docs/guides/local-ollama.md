@@ -13,9 +13,9 @@ ollama pull qwen2.5-coder:1.5b # any model you like; a coder model scores best
 
 ## Write the eval
 
-The solver is a `PromptSolver(model=...)`, and `temperature=0` keeps generation as stable as
-possible. The questions ask for plain column selections, so the output column names come from
-the table and stay stable — which keeps exact-row `ResultSetEquivalence` scoring reliable.
+The solver is a `PromptSolver(model=...)` with `temperature=0` for stable generation. The
+questions ask for plain column selections, so the output column names come straight from the
+table — which keeps exact-row `ResultSetEquivalence` scoring reliable.
 
 Create `test_local_ai.py`:
 
