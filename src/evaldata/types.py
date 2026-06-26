@@ -390,23 +390,39 @@ class Error(BaseModel):
     cause: Exception | None = Field(default=None, exclude=True, repr=False)
 
 
-SolverErrorKind = Literal[
+# The provider-call failures shared by every LLM-backed call: a 1:1 reflection of the
+# litellm exception hierarchy the LLM seam translates.
+ProviderErrorKind = Literal[
     "timeout",
     "rate_limit",
     "auth",
-    "bad_request",
     "context_window_exceeded",
+    "bad_request",
     "api_connection",
     "api_error",
-    "empty_response",
-    "invalid_structured_output",
 ]
+
+SolverErrorKind = ProviderErrorKind | Literal["empty_response", "invalid_structured_output"]
 
 
 class SolverError(Error):
     """A typed, expected failure from a Solver call: returned as a value, not raised."""
 
     kind: SolverErrorKind
+    provider: str | None = None
+
+
+LlmErrorKind = ProviderErrorKind | Literal["malformed_output"]
+
+
+class LlmError(Error):
+    """A typed, expected failure from an `Llm.complete` call: returned as a value, not raised.
+
+    `kind` is a provider-call failure or `malformed_output` (the reply did not validate against
+    the requested `response_format`). `provider` carries the model's provider when reported.
+    """
+
+    kind: LlmErrorKind
     provider: str | None = None
 
 

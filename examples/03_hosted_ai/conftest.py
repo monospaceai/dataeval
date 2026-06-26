@@ -1,6 +1,5 @@
 """Mocked model replies for the hosted-AI example, so it runs without a key or network."""
 
-import json
 from typing import Any
 
 import litellm
@@ -20,7 +19,7 @@ def _mock_sql(messages: list[dict[str, Any]]) -> str:
             output column.
 
     Returns:
-        The structured JSON reply for the matched question.
+        The raw SQL reply for the matched question.
 
     Raises:
         AssertionError: When no known question is present in the messages.
@@ -28,7 +27,7 @@ def _mock_sql(messages: list[dict[str, Any]]) -> str:
     prompt = " ".join(m.get("content", "") for m in messages)
     for marker, sql in _SQL_BY_QUESTION.items():
         if marker in prompt:
-            return json.dumps({"sql": sql})
+            return sql
     msg = f"no mock SQL for prompt: {prompt!r}"  # pragma: no cover
     raise AssertionError(msg)  # pragma: no cover
 

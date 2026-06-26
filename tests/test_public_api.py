@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 import evaldata
-from evaldata import platforms, solvers
+from evaldata import llm, platforms, solvers
 
 pytestmark = pytest.mark.unit
 
@@ -62,11 +62,20 @@ def _blocking_import(blocked: str) -> Callable[..., Any]:
     return fake_import
 
 
-def test_prompt_solver_missing_litellm(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delitem(__import__("sys").modules, "evaldata.solvers.prompt", raising=False)
+def test_lite_llm_subpackage() -> None:
+    from evaldata.llm.lite import LiteLlm
+
+    assert llm.LiteLlm is LiteLlm
+    assert "LiteLlm" in dir(llm)
+    assert evaldata.LiteLlm is LiteLlm
+    assert "LiteLlm" in dir(evaldata)
+
+
+def test_lite_llm_missing_litellm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delitem(__import__("sys").modules, "evaldata.llm.lite", raising=False)
     monkeypatch.setattr(builtins, "__import__", _blocking_import("litellm"))
     with pytest.raises(ImportError, match=r"evaldata\[litellm\]"):
-        solvers.__getattr__("PromptSolver")
+        llm.__getattr__("LiteLlm")
 
 
 def test_postgres_adapter_missing_psycopg(monkeypatch: pytest.MonkeyPatch) -> None:

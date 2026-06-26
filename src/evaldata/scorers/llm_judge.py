@@ -1,4 +1,4 @@
-"""`LlmJudge`: a probabilistic LLM-as-judge `Scorer` over `litellm`.
+"""`LlmJudge`: a probabilistic LLM-as-judge `Scorer` over the `Llm` seam.
 
 A grader model scores the case against authored criteria; its 0-1 score maps to a pass/fail
 verdict, or an inconclusive result when no verdict can be reached.
@@ -7,11 +7,11 @@ verdict, or an inconclusive result when no verdict can be reached.
 from collections.abc import Sequence
 from typing import Literal
 
-import litellm
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
+from evaldata.llm import Llm, resolve_llm
 from evaldata.scorers.context import ScoreContext
-from evaldata.types import EvalCase, ExecutionResult, GoldQuery, ScoreResult, SolverOutput
+from evaldata.types import EvalCase, ExecutionResult, GoldQuery, LlmError, ScoreResult, SolverOutput
 
 SCORER_NAME = "llm_judge"
 
@@ -38,14 +38,14 @@ class LlmJudge:
     """LLM-as-judge `Scorer`: a grader model scores the case against authored criteria.
 
     The grader's 0-1 score is compared to a threshold for the pass/fail verdict; the score and
-    rationale are recorded. A grader without structured-output support, a provider failure, or
-    a malformed reply each yield an inconclusive result.
+    rationale are recorded. A provider failure or a malformed reply yields an inconclusive
+    result.
     """
 
     def __init__(
         self,
         *,
-        model: str,
+        model: str | Llm,
         criteria: str,
         threshold: float = 0.5,
         temperature: float | None = 0.0,
@@ -55,7 +55,9 @@ class LlmJudge:
         """Configure the judge.
 
         Args:
-            model: The litellm grader-model identifier (separate from any solver model).
+            model: A litellm grader-model identifier (separate from any solver model), or an
+                `Llm` to use directly. `temperature` and `timeout` apply only to the
+                model-string path.
             criteria: The natural-language standard the grader scores the case against.
             threshold: The minimum score (inclusive) for a passing verdict. Defaults to `0.5`.
             temperature: Sampling temperature; `None` leaves the provider default. Defaults to
@@ -64,11 +66,10 @@ class LlmJudge:
             show: The case fields to offer the grader, each included only when available.
                 Defaults to all of `question`, `model_sql`, and `gold_query`.
         """
-        self._model = model
+        self._llm = resolve_llm(model, temperature=temperature, timeout=timeout)
+        self._model = model if isinstance(model, str) else type(model).__name__
         self._criteria = criteria
         self._threshold = threshold
-        self._temperature = temperature
-        self._timeout = timeout
         self._show = tuple(show) if show is not None else _ALL_FIELDS
 
     def score(
@@ -92,58 +93,22 @@ class LlmJudge:
         prompt = self._build_prompt(case, context)
         metadata: dict = {"source": "llm_judge", "grader_model": self._model}
 
-        if not litellm.supports_response_schema(model=self._model):
+        completion = self._llm.complete(prompt, response_format=JudgeReply)
+        if isinstance(completion, LlmError):
             return ScoreResult(
                 scorer=SCORER_NAME,
                 verdict="inconclusive",
-                explanation=f"grader model {self._model} does not support structured output",
-                metadata=metadata,
+                explanation=f"grader call failed: {completion.message}",
+                metadata={**metadata, "error": {"kind": completion.kind, "message": completion.message}},
             )
 
-        kwargs: dict = {
-            "model": self._model,
-            "messages": [{"role": "user", "content": prompt}],
-            "response_format": JudgeReply,
-            "timeout": self._timeout,
-        }
-        if self._temperature is not None:
-            kwargs["temperature"] = self._temperature
-
-        try:
-            response = litellm.completion(**kwargs)
-        except litellm.Timeout as e:
-            return self._inconclusive("timeout", e, metadata)
-        except litellm.RateLimitError as e:
-            return self._inconclusive("rate_limit", e, metadata)
-        except litellm.AuthenticationError as e:
-            return self._inconclusive("auth", e, metadata)
-        except litellm.ContextWindowExceededError as e:
-            return self._inconclusive("context_window_exceeded", e, metadata)
-        except litellm.BadRequestError as e:
-            return self._inconclusive("bad_request", e, metadata)
-        except litellm.APIConnectionError as e:
-            return self._inconclusive("api_connection", e, metadata)
-        except litellm.APIError as e:
-            return self._inconclusive("api_error", e, metadata)
-
-        content = response.choices[0].message.content
-        try:
-            reply = JudgeReply.model_validate_json(content or "{}")
-        except ValidationError:
-            return ScoreResult(
-                scorer=SCORER_NAME,
-                verdict="inconclusive",
-                explanation="grader returned malformed output",
-                metadata=metadata,
-            )
-
-        clamped = min(1.0, max(0.0, reply.score))
+        clamped = min(1.0, max(0.0, completion.parsed.score))
         verdict = "pass" if clamped >= self._threshold else "fail"
         return ScoreResult(
             scorer=SCORER_NAME,
             verdict=verdict,
             score=clamped,
-            explanation=reply.reason or None,
+            explanation=completion.parsed.reason or None,
             metadata=metadata,
         )
 
@@ -167,23 +132,3 @@ class LlmJudge:
             parts.append(f"Reference SQL:\n{case.expected.sql}")
         parts.append("Return JSON with a `score` between 0.0 and 1.0 and a `reason`.")
         return "\n\n".join(parts)
-
-    @staticmethod
-    def _inconclusive(kind: str, exc: Exception, metadata: dict) -> ScoreResult:
-        """Build an inconclusive `ScoreResult` from a litellm exception.
-
-        Args:
-            kind: The short error category.
-            exc: The litellm exception to surface.
-            metadata: The base metadata to extend with the structured error.
-
-        Returns:
-            An inconclusive `ScoreResult` carrying the error in `explanation` and `metadata`.
-        """
-        message = str(exc) or type(exc).__name__
-        return ScoreResult(
-            scorer=SCORER_NAME,
-            verdict="inconclusive",
-            explanation=f"grader call failed: {message}",
-            metadata={**metadata, "error": {"kind": kind, "message": message}},
-        )

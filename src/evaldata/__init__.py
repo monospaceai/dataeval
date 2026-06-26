@@ -3,28 +3,32 @@
 from typing import TYPE_CHECKING, Any
 
 from evaldata.core import assert_eval
+from evaldata.llm import Llm
 from evaldata.loaders import eval_case
 from evaldata.scorers import (
     ExpectationSuiteScorer,
     FirstDecisive,
+    LlmJudge,
     ResultSetEquivalence,
     SemanticEquivalence,
     query_equivalence,
 )
-from evaldata.solvers import CallableSolver
+from evaldata.solvers import CallableSolver, PromptSolver
 from evaldata.types import EvalCase, PlatformRef
 
 if TYPE_CHECKING:
-    from evaldata.scorers import LlmJudge as LlmJudge
-    from evaldata.solvers import PromptSolver as PromptSolver
+    from evaldata.llm import LiteLlm
 
 __all__ = [
     "CallableSolver",
     "EvalCase",
     "ExpectationSuiteScorer",
     "FirstDecisive",
+    "LiteLlm",
+    "Llm",
     "LlmJudge",
     "PlatformRef",
+    "PromptSolver",
     "ResultSetEquivalence",
     "SemanticEquivalence",
     "assert_eval",
@@ -32,18 +36,15 @@ __all__ = [
     "query_equivalence",
 ]
 
-_LAZY = {"PromptSolver": "evaldata.solvers", "LlmJudge": "evaldata.scorers"}
-
 
 def __getattr__(name: str) -> Any:
-    module = _LAZY.get(name)
-    if module is not None:
-        import importlib
+    if name == "LiteLlm":
+        from evaldata.llm import LiteLlm
 
-        return getattr(importlib.import_module(module), name)
+        return LiteLlm
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
 
 def __dir__() -> list[str]:
-    return sorted([*globals(), *_LAZY])
+    return sorted([*globals(), "LiteLlm"])
