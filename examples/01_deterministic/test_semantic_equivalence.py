@@ -34,7 +34,7 @@ def _score(case: EvalCase, model_sql: str, scorer: Scorer) -> ScoreResult:
 
     Args:
         case: The eval case, carrying the gold query and platform.
-        model_sql: The candidate SQL to judge against the gold query.
+        model_sql: The model's SQL to judge against the gold query.
         scorer: The scorer to run: `SemanticEquivalence` (compares the queries) or composite `query_equivalence`.
 
     Returns:

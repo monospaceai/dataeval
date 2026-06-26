@@ -4,7 +4,7 @@ import pytest
 from pydantic import BaseModel
 
 from evaldata.llm import Completion, Llm, StubLlm, TextCompletion, Usage, resolve_llm
-from evaldata.llm.lite import LiteLlm
+from evaldata.llm.litellm import LiteLlm
 from evaldata.types import LlmError
 
 

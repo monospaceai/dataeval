@@ -63,7 +63,7 @@ def _blocking_import(blocked: str) -> Callable[..., Any]:
 
 
 def test_lite_llm_subpackage() -> None:
-    from evaldata.llm.lite import LiteLlm
+    from evaldata.llm.litellm import LiteLlm
 
     assert llm.LiteLlm is LiteLlm
     assert "LiteLlm" in dir(llm)
@@ -72,7 +72,7 @@ def test_lite_llm_subpackage() -> None:
 
 
 def test_lite_llm_missing_litellm(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delitem(__import__("sys").modules, "evaldata.llm.lite", raising=False)
+    monkeypatch.delitem(__import__("sys").modules, "evaldata.llm.litellm", raising=False)
     monkeypatch.setattr(builtins, "__import__", _blocking_import("litellm"))
     with pytest.raises(ImportError, match=r"evaldata\[litellm\]"):
         llm.__getattr__("LiteLlm")

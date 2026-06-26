@@ -1,7 +1,7 @@
 """Tests for `PromptSolver` — the LLM-backed solver, driven through a `StubLlm`.
 
 The solver talks only to the `Llm` seam, so its unit tests inject a `StubLlm` (no litellm,
-no network). The litellm backend itself is covered in `tests/llm/test_lite.py`.
+no network). The litellm backend itself is covered by its own tests.
 """
 
 import os

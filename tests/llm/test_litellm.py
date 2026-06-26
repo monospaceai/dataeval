@@ -11,7 +11,7 @@ import pytest
 from pydantic import BaseModel
 
 from evaldata.llm import Completion, TextCompletion
-from evaldata.llm.lite import LiteLlm
+from evaldata.llm.litellm import LiteLlm
 from evaldata.types import LlmError, ProviderErrorKind
 
 

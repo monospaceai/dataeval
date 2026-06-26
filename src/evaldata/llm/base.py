@@ -146,7 +146,7 @@ def resolve_llm(model: "str | Llm", *, temperature: float | None = None, timeout
     """
     if isinstance(model, str):
         try:
-            from evaldata.llm.lite import LiteLlm
+            from evaldata.llm.litellm import LiteLlm
         except ImportError as e:
             msg = "a model string requires the 'litellm' extra: install evaldata[litellm]"
             raise ImportError(msg) from e

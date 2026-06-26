@@ -50,8 +50,6 @@ def assert_eval(
     live = adapter if adapter is not None else resolve(case.platform)
     max_seconds = case.cost_budget.max_seconds if case.cost_budget is not None else None
     dialect = case.platform.dialect or case.platform.kind
-    # `QueryRunner.model_sql` is the authoritative candidate SQL for every scorer (the same
-    # string as `SolverOutput.output`); scorers read it via `context.queries.model_sql`.
     queries = QueryRunner(live, sql, dialect, max_seconds)
     result = queries.run(sql)
     context = ScoreContext(queries=queries)

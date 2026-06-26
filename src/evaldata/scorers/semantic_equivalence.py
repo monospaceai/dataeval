@@ -221,7 +221,7 @@ class _PatchedSimplifier(Simplifier):
         """Rewrite the `constant - variable` comparison correctly; defer the rest to SQLGlot.
 
         Args:
-            expression: The candidate comparison node.
+            expression: The comparison node.
 
         Returns:
             The corrected comparison when the variable is a subtraction's subtrahend, else
