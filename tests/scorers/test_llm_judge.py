@@ -162,6 +162,15 @@ class TestLlmJudge:
         assert "How many tracks?" in prompt
         assert "SELECT secret" not in prompt
 
+    def test_show_can_omit_input(self) -> None:
+        stub = StubLlm(JudgeReply(score=0.9, reason="r"))
+        LlmJudge(model=stub, criteria="c", show=["actual_output"]).score(
+            _case(), _OUTPUT, _RESULT, context=_context(model="SELECT secret")
+        )
+        prompt = stub.prompts[-1]
+        assert "How many tracks?" not in prompt
+        assert "SELECT secret" in prompt
+
     def test_default_instruction_and_output_format_appear(self) -> None:
         stub = StubLlm(JudgeReply(score=0.9, reason="r"))
         LlmJudge(model=stub, criteria="c").score(_case(), _OUTPUT, _RESULT, context=_context())

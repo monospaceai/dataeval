@@ -1,5 +1,10 @@
 """Tests for the LLM seam's pure-Python surface: `StubLlm`, `resolve_llm`, and the protocol."""
 
+import builtins
+import sys
+from collections.abc import Callable
+from typing import Any
+
 import pytest
 from pydantic import BaseModel
 
@@ -10,6 +15,18 @@ from evaldata.types import LlmError
 
 class _Reply(BaseModel):
     value: str
+
+
+def _blocking_import(blocked: str) -> Callable[..., Any]:
+    real_import = builtins.__import__
+
+    def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == blocked:
+            msg = f"No module named {blocked!r}"
+            raise ImportError(msg)
+        return real_import(name, *args, **kwargs)
+
+    return fake_import
 
 
 @pytest.mark.unit
@@ -92,3 +109,9 @@ class TestResolveLlm:
     def test_llm_passed_through_unchanged(self) -> None:
         stub = StubLlm(_Reply(value="x"))
         assert resolve_llm(stub, temperature=0.0, timeout=1.0) is stub
+
+    def test_string_without_litellm_raises_import_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delitem(sys.modules, "evaldata.llm.litellm", raising=False)
+        monkeypatch.setattr(builtins, "__import__", _blocking_import("litellm"))
+        with pytest.raises(ImportError, match=r"evaldata\[litellm\]"):
+            resolve_llm("openai/gpt-4o-mini")
