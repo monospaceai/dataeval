@@ -126,7 +126,7 @@ class TestAstEquivalence:
         assert verdict.equivalence == "unknown"
 
     def test_unfoldable_constant_is_unknown(self) -> None:
-        # Folding `1.0 / 0` raises during simplification, so the check abstains.
+        # Folding `1.0 / 0` raises during simplification, so the check returns unknown.
         verdict = _ast("SELECT 1.0 / 0 AS n", "SELECT 1 AS n")
         assert verdict.equivalence == "unknown"
 
@@ -202,7 +202,7 @@ class TestCanonicalization:
         assert _ast_dialect(model, gold, "databricks").equivalence == "equivalent"
 
 
-# Non-deterministic calls that must abstain (never confirmed), checked under Databricks since
+# Non-deterministic calls that must return unknown (never confirmed), checked under Databricks since
 # `monotonically_increasing_id`/`spark_partition_id`/`input_file_name` are Spark builtins.
 _NONDETERMINISTIC_QUERIES = [
     "SELECT rand() AS n FROM t",
@@ -219,7 +219,7 @@ class TestNonDeterminism:
         assert verdict.equivalence != "equivalent"
 
     @pytest.mark.parametrize("query", _NONDETERMINISTIC_QUERIES)
-    def test_named_nondeterministic_builtins_abstain(self, query: str) -> None:
+    def test_named_nondeterministic_builtins_return_unknown(self, query: str) -> None:
         verdict = _ast_dialect(query, query, "databricks")
         assert verdict.equivalence == "unknown"
         assert verdict.detail is not None
@@ -246,10 +246,17 @@ class TestSemanticEquivalence:
         assert score.scorer == SCORER_NAME
         assert score.passed is True
 
-    def test_fails_as_undecided_when_no_check_decides(self) -> None:
+    def test_confirmed_result_is_proven(self) -> None:
+        case = _gold_case("SELECT a FROM t")
+        score = SemanticEquivalence().score(case, _OUTPUT, _RESULT, context=_context("SELECT a FROM t"))
+        assert score.basis == "proven"
+
+    def test_inconclusive_when_no_check_decides(self) -> None:
         case = _gold_case("SELECT 2 AS n")
         score = SemanticEquivalence([AstEquivalence()]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1 AS n"))
+        assert score.verdict == "inconclusive"
         assert score.passed is False
+        assert score.basis is None
         assert score.explanation == "no semantic check could confirm equivalence"
 
     def test_non_gold_expected_raises_type_error(self) -> None:
@@ -259,7 +266,7 @@ class TestSemanticEquivalence:
 
     def test_stops_at_first_decisive_verdict(self) -> None:
         first = _FixedCheck("equivalent", method="ast")
-        second = _FixedCheck("equivalent", method="plan")
+        second = _FixedCheck("equivalent", method="ast")
         case = _gold_case("SELECT 1")
         score = SemanticEquivalence([first, second]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1"))
         assert score.passed is True
@@ -269,9 +276,10 @@ class TestSemanticEquivalence:
 
     def test_falls_through_unknown_to_a_later_check(self) -> None:
         first = _FixedCheck("unknown", method="ast")
-        second = _FixedCheck("unknown", method="plan")
+        second = _FixedCheck("unknown", method="ast")
         case = _gold_case("SELECT 1")
         score = SemanticEquivalence([first, second]).score(case, _OUTPUT, _RESULT, context=_context("SELECT 1"))
+        assert score.verdict == "inconclusive"
         assert score.passed is False
         assert first.calls == 1
         assert second.calls == 1

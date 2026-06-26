@@ -46,13 +46,29 @@ A [scorer](reference/scorers.md) judges the solver's result against the case's `
 - **`ResultSetEquivalence`** compares result rows — for the untyped, typed, and gold-query
   shapes. See [Equivalence](reference/equivalence.md) for how the row diff works.
 - **`SemanticEquivalence`** compares the AI's query against a gold query without running either:
-  it confirms a match or abstains when it can't — it never refutes. `query_equivalence()`
+  it confirms a match or returns `unknown` when it can't — it never refutes. `observed_equivalence()`
   composes it with `ResultSetEquivalence`, so a confirmed match skips running the queries while
   everything else is decided by running both and comparing the results. See
   [Check semantic equivalence](guides/semantic-equivalence.md).
 - **`ExpectationSuiteScorer`** evaluates an expectation suite's structural checks.
+- **`LlmJudge`** asks a grader model to score the AI's SQL against criteria you write, for cases
+  where comparing rows or matching syntax isn't enough. It returns a pass/fail verdict with the
+  grader's score and rationale. See [Score with an LLM judge](guides/llm-judge.md).
 
 Pass a list to `assert_eval`, so a single case can be scored several ways.
+
+### Verdicts and basis
+
+Every scorer returns a [`ScoreResult`](reference/types.md) whose `verdict` is one of three
+values: `pass`, `fail`, or `inconclusive` — the last meaning the scorer couldn't decide either way
+(a grader call that errored, a query that couldn't be parsed). Inconclusive doesn't mean the
+answer is wrong.
+
+A decided result also carries a `basis` — how strong the evidence behind it is:
+
+- **`proven`** — sound on every dataset, by reasoning about the queries (`SemanticEquivalence`).
+- **`observed`** — seen to hold on the data that was run (`ResultSetEquivalence`).
+- **`judged`** — a probabilistic judgment from a grader model (`LlmJudge`).
 
 ## Platforms
 

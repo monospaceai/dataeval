@@ -101,7 +101,7 @@ class ResultSetEquivalence:
         if result.error is not None:
             return ScoreResult(
                 scorer=SCORER_NAME,
-                passed=False,
+                verdict="fail",
                 explanation=f"query execution failed: {result.error.message}",
             )
 
@@ -125,14 +125,14 @@ class ResultSetEquivalence:
         if config.null_equality == "distinct":
             return ScoreResult(
                 scorer=SCORER_NAME,
-                passed=False,
+                verdict="fail",
                 explanation="null_equality='distinct' requires a match_key (the keyless EXCEPT ALL path treats NULLs as equal)",
             )
 
         diff_or_error = _diff_rows(source, columns.in_both, config.float_tolerance, context.queries)
         if isinstance(diff_or_error, ExecutionError):
             return ScoreResult(
-                scorer=SCORER_NAME, passed=False, explanation=f"query execution failed: {diff_or_error.message}"
+                scorer=SCORER_NAME, verdict="fail", explanation=f"query execution failed: {diff_or_error.message}"
             )
         missing_count, extra_count, sample_missing, sample_extra = diff_or_error
 
@@ -147,7 +147,7 @@ class ResultSetEquivalence:
             type_mismatches=type_mismatches,
             column_mismatches=[],
         )
-        return ScoreResult(scorer=SCORER_NAME, passed=diff is None, diff=diff)
+        return ScoreResult(scorer=SCORER_NAME, verdict="pass" if diff is None else "fail", basis="observed", diff=diff)
 
 
 def _gold_failure(error: ExecutionError) -> ScoreResult:
@@ -161,7 +161,7 @@ def _gold_failure(error: ExecutionError) -> ScoreResult:
     """
     return ScoreResult(
         scorer=SCORER_NAME,
-        passed=False,
+        verdict="fail",
         explanation=f"gold query failed: {error.message}",
         metadata={"gold_query_failed": True},
     )
@@ -235,7 +235,7 @@ def _failure(explanation: str) -> ScoreResult:
     Returns:
         A failing `ScoreResult` with no diff.
     """
-    return ScoreResult(scorer=SCORER_NAME, passed=False, explanation=explanation)
+    return ScoreResult(scorer=SCORER_NAME, verdict="fail", explanation=explanation)
 
 
 def _keyed_score(
@@ -325,7 +325,7 @@ def _keyed_score(
         type_mismatches=type_mismatches,
         column_mismatches=column_mismatches,
     )
-    return ScoreResult(scorer=SCORER_NAME, passed=diff is None, diff=diff)
+    return ScoreResult(scorer=SCORER_NAME, verdict="pass" if diff is None else "fail", basis="observed", diff=diff)
 
 
 _Samples = tuple[list[dict[str, Any]], list[dict[str, Any]]]

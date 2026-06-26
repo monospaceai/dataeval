@@ -3,42 +3,58 @@
 from typing import TYPE_CHECKING, Any
 
 from evaldata.core import assert_eval
+from evaldata.llm import Llm
 from evaldata.loaders import eval_case
 from evaldata.scorers import (
+    JUDGE_INSTRUCTION,
     ExpectationSuiteScorer,
     FirstDecisive,
+    JudgeExample,
+    LlmJudge,
     ResultSetEquivalence,
+    RubricBand,
     SemanticEquivalence,
-    query_equivalence,
+    judged_equivalence,
+    observed_equivalence,
+    sql_equivalence_judge,
 )
-from evaldata.solvers import CallableSolver
+from evaldata.solvers import CallableSolver, PromptSolver
 from evaldata.types import EvalCase, PlatformRef
 
 if TYPE_CHECKING:
-    from evaldata.solvers import PromptSolver as PromptSolver
+    from evaldata.llm import LiteLlm
 
 __all__ = [
+    "JUDGE_INSTRUCTION",
     "CallableSolver",
     "EvalCase",
     "ExpectationSuiteScorer",
     "FirstDecisive",
+    "JudgeExample",
+    "LiteLlm",
+    "Llm",
+    "LlmJudge",
     "PlatformRef",
+    "PromptSolver",
     "ResultSetEquivalence",
+    "RubricBand",
     "SemanticEquivalence",
     "assert_eval",
     "eval_case",
-    "query_equivalence",
+    "judged_equivalence",
+    "observed_equivalence",
+    "sql_equivalence_judge",
 ]
 
 
 def __getattr__(name: str) -> Any:
-    if name == "PromptSolver":
-        from evaldata.solvers import PromptSolver
+    if name == "LiteLlm":
+        from evaldata.llm import LiteLlm
 
-        return PromptSolver
+        return LiteLlm
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
 
 def __dir__() -> list[str]:
-    return sorted([*globals(), "PromptSolver"])
+    return sorted([*globals(), "LiteLlm"])

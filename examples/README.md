@@ -16,6 +16,9 @@ solver = PromptSolver(model="openai/gpt-4o-mini")      # 03: hosted model
 `04_databricks` instead varies the **platform**: the same kinds of cases run against a real
 Databricks SQL Warehouse, with a deterministic solver so the focus is the platform.
 
+`05_llm_judge` instead varies the **scorer**: a deterministic solver supplies the AI SQL so the
+only model call is the SQL-equivalence judge deciding what the syntax check cannot.
+
 ## Tiers
 
 | Dir | Solver | Purpose | Needs |
@@ -24,6 +27,7 @@ Databricks SQL Warehouse, with a deterministic solver so the focus is the platfo
 | `02_local_ai` | `PromptSolver` → local Ollama | Runs a self-hosted Ollama model through litellm | `evaldata[litellm]` + `ollama pull gemma4` |
 | `03_hosted_ai` | `PromptSolver` → hosted model | Sense-checks the hosted-model plumbing with a mocked reply (no live call) | `evaldata[litellm]` |
 | `04_databricks` | `CallableSolver` (fixed SQL) | Runs the same cases against a live Databricks SQL Warehouse | `evaldata[databricks]` + a warehouse |
+| `05_llm_judge` | `CallableSolver` (fixed SQL) | Has the SQL-equivalence judge decide what the syntax check can't, with a mocked grader reply (no live call) | `evaldata[litellm]` |
 
 ### 01_deterministic
 The solver is a `CallableSolver` returning fixed SQL. `test_golden_questions.py` covers the
@@ -32,7 +36,7 @@ types), a `GoldQuery` (the reference query's *result* is compared, not its SQL t
 `ExpectationSuite` (`row_count` / `not_null` / `unique`). `test_semantic_equivalence.py` shows
 `SemanticEquivalence` confirming AI SQL that differs syntactically from the gold query but means
 the same thing — by comparing normalized syntax trees, without running anything — and
-`query_equivalence()` adding an execution fallback that runs the queries when the trees can't
+`observed_equivalence()` adding an execution fallback that runs the queries when the trees can't
 confirm.
 
 ### 02_local_ai
@@ -46,8 +50,8 @@ model like `ollama_chat/qwen2.5-coder:1.5b`), and point at a remote Ollama insta
 ### 03_hosted_ai
 Mirrors 02 against a hosted model (`openai/gpt-4o-mini` by default, override with
 `EVALDATA_HOSTED_MODEL`). The model reply is mocked per question, so it runs
-deterministically as a sense-check of the example's plumbing without making a real call or
-needing an API key.
+deterministically as a sense-check of the example's plumbing without a live model call or an
+API key.
 
 ### 04_databricks
 The same deterministic cases as 01, executed against a real Databricks SQL Warehouse to show
@@ -63,6 +67,12 @@ its platform features:
 Set `DATABRICKS_SERVER_HOSTNAME` and `DATABRICKS_HTTP_PATH`, and authenticate with the
 Databricks CLI (https://github.com/databricks/cli). It seeds a session-scoped
 `TEMPORARY VIEW`, so it needs only query permissions and leaves nothing behind.
+
+### 05_llm_judge
+Both cases pick AI SQL the syntax check leaves inconclusive, so the SQL-equivalence judge
+decides: one a CTE it confirms, one a wrong filter it refutes. The grader needs a
+structured-output-capable hosted model (`openai/gpt-4o-mini` by default, override with
+`EVALDATA_HOSTED_MODEL`). Its reply is mocked, so it runs without a live model call or an API key.
 
 ## Running
 
@@ -81,4 +91,7 @@ uv run pytest examples/03_hosted_ai -q
 uv sync --extra databricks
 DATABRICKS_SERVER_HOSTNAME=... DATABRICKS_HTTP_PATH=... \
   uv run pytest examples/04_databricks -p no:randomly -q
+
+# 05 — runs mocked, no key needed:
+uv run pytest examples/05_llm_judge -q
 ```

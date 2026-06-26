@@ -1,9 +1,9 @@
 """`SemanticEquivalence`: query-vs-query equivalence via a sequence of pluggable checks.
 
-Each `EquivalenceCheck` returns a `SemanticVerdict`; every check compares the
-queries themselves rather than running them, so the scorer confirms equivalence or abstains but
-never refutes. `AstEquivalence` normalizes both queries' syntax trees with SQLGlot and compares
-them: portable and execution-free.
+Each `EquivalenceCheck` returns a `SemanticVerdict`; every check compares the queries
+themselves rather than running them, so a check confirms equivalence (`"equivalent"`) or
+returns `"unknown"`; it never refutes. `AstEquivalence` normalizes both queries' syntax
+trees with SQLGlot and compares them: portable and execution-free.
 """
 
 import functools
@@ -39,8 +39,8 @@ SCORER_NAME = "semantic_equivalence"
 class EquivalenceCheck(Protocol):
     """One way of confirming equivalence by comparing the queries, not their results; never raises.
 
-    A check confirms equivalence (`"equivalent"`) or abstains (`"unknown"`); it never refutes,
-    so it cannot falsely reject a correct query.
+    A check confirms equivalence (`"equivalent"`) or returns `"unknown"`; it never refutes, so
+    it cannot falsely reject a correct query.
     """
 
     method: EquivalenceMethod
@@ -221,7 +221,7 @@ class _PatchedSimplifier(Simplifier):
         """Rewrite the `constant - variable` comparison correctly; defer the rest to SQLGlot.
 
         Args:
-            expression: The candidate comparison node.
+            expression: The comparison node.
 
         Returns:
             The corrected comparison when the variable is a subtraction's subtrahend, else
@@ -284,8 +284,9 @@ def default_equivalence_checks() -> list[EquivalenceCheck]:
 class SemanticEquivalence:
     """Scores a gold-query case with checks that compare the queries themselves.
 
-    It never runs a query and never refutes, so it confirms equivalence or abstains. The first
-    check that confirms wins; if none confirm, the result fails as undecided.
+    It never runs a query and never refutes, so it confirms equivalence or is undecided. The
+    first check that confirms yields a passing result; if none confirm, the result is
+    inconclusive.
     """
 
     def __init__(self, checks: Sequence[EquivalenceCheck] | None = None) -> None:
@@ -309,8 +310,8 @@ class SemanticEquivalence:
             context: The score context, carrying the model SQL, dialect, and query runner.
 
         Returns:
-            A passing `ScoreResult` when a check confirms equivalence, else a failing result
-            (no check could confirm).
+            A passing `ScoreResult` when a check confirms equivalence, else an inconclusive
+            result (no check could confirm).
 
         Raises:
             TypeError: If `case.expected` is not a `GoldQuery`.

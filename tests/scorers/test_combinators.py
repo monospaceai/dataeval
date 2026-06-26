@@ -1,13 +1,13 @@
-"""Tests for the `FirstDecisive` combinator and the `query_equivalence` composition.
+"""Tests for the `FirstDecisive` combinator and the `observed_equivalence` composition.
 
-`FirstDecisive` is exercised with lightweight fake scorers; `query_equivalence` runs against an
-in-process DuckDB engine.
+`FirstDecisive` is exercised with lightweight fake scorers; `observed_equivalence` runs against
+an in-process DuckDB engine.
 """
 
 import pytest
 
 from evaldata.platforms.duckdb import DuckDBAdapter
-from evaldata.scorers import FirstDecisive, QueryRunner, ScoreContext, Scorer, query_equivalence
+from evaldata.scorers import FirstDecisive, QueryRunner, ScoreContext, Scorer, observed_equivalence
 from evaldata.types import (
     EvalCase,
     ExecutionResult,
@@ -38,11 +38,15 @@ class _FakeScorer:
 
 
 def _passing(scorer: str) -> ScoreResult:
-    return ScoreResult(scorer=scorer, passed=True)
+    return ScoreResult(scorer=scorer, verdict="pass")
 
 
 def _failing(scorer: str, *, diff: ResultSetDiff | None = None) -> ScoreResult:
-    return ScoreResult(scorer=scorer, passed=False, diff=diff)
+    return ScoreResult(scorer=scorer, verdict="fail", diff=diff)
+
+
+def _inconclusive(scorer: str) -> ScoreResult:
+    return ScoreResult(scorer=scorer, verdict="inconclusive")
 
 
 def _gold_case(gold_sql: str) -> EvalCase:
@@ -83,31 +87,64 @@ class TestFirstDecisive:
         assert score.scorer == "first"
         assert first.calls == 1
         assert second.calls == 0
-        assert score.metadata["first_decisive"] == [{"scorer": "first", "passed": True}]
+        assert score.metadata["first_decisive"] == [{"scorer": "first", "passed": True, "verdict": "pass"}]
 
-    def test_all_failing_returns_last_member_and_preserves_diff(self) -> None:
+    def test_first_failing_member_short_circuits_and_preserves_diff(self) -> None:
         diff = ResultSetDiff(expected_row_count=1, actual_row_count=0, missing_row_count=1)
-        first = _FakeScorer(_failing("first"))
-        second = _FakeScorer(_failing("second", diff=diff))
+        first = _FakeScorer(_failing("first", diff=diff))
+        second = _FakeScorer(_passing("second"))
+        case = _gold_case("SELECT 1")
+        score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
+        assert score.passed is False
+        assert score.scorer == "first"
+        assert score.diff is diff
+        assert first.calls == 1
+        assert second.calls == 0
+        assert score.metadata["first_decisive"] == [{"scorer": "first", "passed": False, "verdict": "fail"}]
+
+    def test_all_inconclusive_returns_last_member(self) -> None:
+        first = _FakeScorer(_inconclusive("first"))
+        second = _FakeScorer(_inconclusive("second"))
+        case = _gold_case("SELECT 1")
+        score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
+        assert score.verdict == "inconclusive"
+        assert score.scorer == "second"
+        assert first.calls == 1
+        assert second.calls == 1
+        assert score.metadata["first_decisive"] == [
+            {"scorer": "first", "passed": False, "verdict": "inconclusive"},
+            {"scorer": "second", "passed": False, "verdict": "inconclusive"},
+        ]
+
+    def test_inconclusive_then_failing_returns_fail(self) -> None:
+        first = _FakeScorer(_inconclusive("first"))
+        second = _FakeScorer(_failing("second"))
         case = _gold_case("SELECT 1")
         score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
         assert score.passed is False
         assert score.scorer == "second"
-        assert score.diff is diff
-        assert first.calls == 1
-        assert second.calls == 1
         assert score.metadata["first_decisive"] == [
-            {"scorer": "first", "passed": False},
-            {"scorer": "second", "passed": False},
+            {"scorer": "first", "passed": False, "verdict": "inconclusive"},
+            {"scorer": "second", "passed": False, "verdict": "fail"},
         ]
 
+    def test_failing_member_is_not_overridden_by_a_later_passing_member(self) -> None:
+        first = _FakeScorer(_failing("first"))
+        second = _FakeScorer(_passing("second"))
+        case = _gold_case("SELECT 1")
+        score = FirstDecisive([first, second]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
+        assert score.verdict == "fail"
+        assert score.scorer == "first"
+        assert first.calls == 1
+        assert second.calls == 0
+
     def test_merges_into_existing_metadata(self) -> None:
-        result = ScoreResult(scorer="only", passed=True, metadata={"verdicts": []})
+        result = ScoreResult(scorer="only", verdict="pass", metadata={"verdicts": []})
         member = _FakeScorer(result)
         case = _gold_case("SELECT 1")
         score = FirstDecisive([member]).score(case, _OUTPUT, _RESULT, context=_null_context("SELECT 1"))
         assert score.metadata["verdicts"] == []
-        assert score.metadata["first_decisive"] == [{"scorer": "only", "passed": True}]
+        assert score.metadata["first_decisive"] == [{"scorer": "only", "passed": True, "verdict": "pass"}]
 
 
 def _duckdb_context(model: str) -> ScoreContext:
@@ -120,20 +157,20 @@ def _trail(score: ScoreResult) -> list[str]:
 
 
 @pytest.mark.unit
-class TestQueryEquivalence:
+class TestObservedEquivalence:
     def test_ast_confirms_and_skips_execution(self) -> None:
         model = "select NAME from t where id > 1 and country = 'US'"
         case = _gold_case("SELECT name FROM t WHERE country = 'US' AND id > 1")
         result = ExecutionResult(rows=[], latency_seconds=0.0)
-        score = query_equivalence().score(case, _OUTPUT, result, context=_duckdb_context(model))
+        score = observed_equivalence().score(case, _OUTPUT, result, context=_duckdb_context(model))
         assert score.passed is True
         assert _trail(score) == ["semantic_equivalence"]
 
-    def test_ast_abstains_then_execution_confirms(self) -> None:
+    def test_ast_inconclusive_then_execution_confirms(self) -> None:
         model = "SELECT 2 AS n UNION ALL SELECT 1 AS n"
         case = _gold_case("SELECT 1 AS n UNION ALL SELECT 2 AS n")
         result = ExecutionResult(rows=[{"n": 2}, {"n": 1}], latency_seconds=0.0)
-        score = query_equivalence().score(case, _OUTPUT, result, context=_duckdb_context(model))
+        score = observed_equivalence().score(case, _OUTPUT, result, context=_duckdb_context(model))
         assert score.passed is True
         assert _trail(score) == ["semantic_equivalence", "result_set_equivalence"]
 
@@ -141,7 +178,7 @@ class TestQueryEquivalence:
         model = "SELECT 1 AS n"
         case = _gold_case("SELECT 2 AS n")
         result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        score = query_equivalence().score(case, _OUTPUT, result, context=_duckdb_context(model))
+        score = observed_equivalence().score(case, _OUTPUT, result, context=_duckdb_context(model))
         assert score.passed is False
         assert _trail(score) == ["semantic_equivalence", "result_set_equivalence"]
         assert score.diff is not None

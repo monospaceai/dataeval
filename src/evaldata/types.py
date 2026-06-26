@@ -26,6 +26,16 @@ SQLDialect = Literal[
     "duckdb",
 ]
 
+# A scorer-level test outcome: a confirmed pass, a refuted fail, or `"inconclusive"` when the
+# test could neither confirm nor refute.
+Verdict = Literal["pass", "fail", "inconclusive"]
+
+# Evidence strength of a verdict: sound on all data / observed on the data run / probabilistic judgment.
+Basis = Literal["proven", "observed", "judged"]
+
+# A normalized graded magnitude in `[0.0, 1.0]`, higher-is-better.
+Score = Annotated[float, Field(ge=0.0, le=1.0)]
+
 
 class PlatformRef(BaseModel):
     """Serializable reference to a configured data platform connection."""
@@ -383,23 +393,39 @@ class Error(BaseModel):
     cause: Exception | None = Field(default=None, exclude=True, repr=False)
 
 
-SolverErrorKind = Literal[
+# The provider-call failures shared by every LLM-backed call: a 1:1 reflection of the
+# litellm exception hierarchy the LLM seam translates.
+ProviderErrorKind = Literal[
     "timeout",
     "rate_limit",
     "auth",
-    "bad_request",
     "context_window_exceeded",
+    "bad_request",
     "api_connection",
     "api_error",
-    "empty_response",
-    "invalid_structured_output",
 ]
+
+SolverErrorKind = ProviderErrorKind | Literal["empty_response", "invalid_structured_output"]
 
 
 class SolverError(Error):
     """A typed, expected failure from a Solver call: returned as a value, not raised."""
 
     kind: SolverErrorKind
+    provider: str | None = None
+
+
+LlmErrorKind = ProviderErrorKind | Literal["malformed_output"]
+
+
+class LlmError(Error):
+    """A typed, expected failure from an `Llm.complete` call: returned as a value, not raised.
+
+    `kind` is a provider-call failure or `malformed_output` (the reply did not validate against
+    the requested `response_format`). `provider` carries the model's provider when reported.
+    """
+
+    kind: LlmErrorKind
     provider: str | None = None
 
 
@@ -540,16 +566,45 @@ class ExpectationOutcome(BaseModel):
 
 
 class ScoreResult(BaseModel):
-    """The outcome of running a Scorer against an EvalCase: pass/fail plus diagnostics."""
+    """The outcome of running a Scorer against an EvalCase: a verdict plus diagnostics.
+
+    `verdict` is the scorer-level test outcome: `"pass"`, `"fail"`, or `"inconclusive"`
+    (the test could neither confirm nor refute). `score` is an optional normalized graded
+    magnitude in `[0.0, 1.0]`, higher-is-better. `basis` is the evidence strength behind the
+    verdict, stamped by the scorer that decided it. Both `score` and `basis` must be absent
+    when the verdict is `"inconclusive"`, since an undecided result carries no evidence.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     scorer: Annotated[str, Field(min_length=1)]
-    passed: bool
+    verdict: Verdict
+    score: Score | None = None
+    basis: Basis | None = None
     diff: ResultSetDiff | None = None
     outcomes: list[ExpectationOutcome] = Field(default_factory=list)
     explanation: Annotated[str, Field(min_length=1)] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def passed(self) -> bool:
+        """Whether the verdict is `"pass"`."""
+        return self.verdict == "pass"
+
+    @model_validator(mode="after")
+    def _inconclusive_carries_no_evidence(self) -> "ScoreResult":
+        """Reject a graded `score` or a `basis` on an inconclusive verdict.
+
+        Returns:
+            The validated `ScoreResult`.
+
+        Raises:
+            ValueError: If `verdict` is `"inconclusive"` and `score` or `basis` is set.
+        """
+        if self.verdict == "inconclusive" and (self.score is not None or self.basis is not None):
+            msg = "an inconclusive ScoreResult cannot carry a graded score or a basis"
+            raise ValueError(msg)
+        return self
 
 
 # A semantic check either confirms equivalence or cannot decide; it never refutes, so "unknown"
@@ -557,7 +612,7 @@ class ScoreResult(BaseModel):
 Equivalence = Literal["equivalent", "unknown"]
 
 # The kinds of equivalence-deciding technique.
-EquivalenceMethod = Literal["ast", "plan", "execution", "llm"]
+EquivalenceMethod = Literal["ast"]
 
 
 class SemanticVerdict(BaseModel):

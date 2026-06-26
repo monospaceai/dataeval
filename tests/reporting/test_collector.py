@@ -52,7 +52,7 @@ class TestRunReportJson:
                 id="bad",
                 input="q2",
                 passed=False,
-                scores=[ScoreResult(scorer="result_set_equivalence", passed=False, diff=diff)],
+                scores=[ScoreResult(scorer="result_set_equivalence", verdict="fail", diff=diff)],
             )
         )
         record(

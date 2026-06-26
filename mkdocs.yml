@@ -94,6 +94,7 @@ nav:
       - Evaluate a hosted model: guides/hosted-model.md
       - Evaluate against Databricks: guides/databricks.md
       - Check semantic equivalence: guides/semantic-equivalence.md
+      - Score with an LLM judge: guides/llm-judge.md
   - Concepts: concepts.md
   - API reference:
       - reference/index.md
@@ -101,5 +102,6 @@ nav:
       - Types: reference/types.md
       - Scorers: reference/scorers.md
       - Solvers: reference/solvers.md
+      - LLM: reference/llm.md
       - Equivalence: reference/equivalence.md
       - Platforms: reference/platforms.md

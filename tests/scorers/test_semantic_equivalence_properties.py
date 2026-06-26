@@ -239,7 +239,7 @@ def _breaking_mutations(node: exp.Expression) -> list[tuple[str, object]]:
     builds the replacement.
 
     Rewrites stay near-identical to the original so the canonicalizer is exercised rather than
-    abstaining on shape alone. Labels let the caller weight families evenly, so a rare
+    returning unknown on shape alone. Labels let the caller weight families evenly, so a rare
     high-signal family is not drowned out by abundant ones.
     """
     if isinstance(node, exp.Add):
@@ -443,7 +443,7 @@ class TestCanonicalizationProperties:
     def test_confirmed_breaking_mutation_executes_identically(self, query: exp.Select, choose: st.DataObject) -> None:
         # Soundness: the pass only ever confirms, so any confirmed breaking mutation must agree
         # on execution; a confirmed pair that diverges is over-merging. Most breaking mutations
-        # make the pass abstain (no execution), so only the rare confirmed pair runs. An
+        # make the pass return unknown (no execution), so only the rare confirmed pair runs. An
         # over-merge surfaces on a single distinguishing row, so few datasets suffice.
         mutated = _mutate_breaking(query, choose)
         assume(mutated is not None)

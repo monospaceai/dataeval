@@ -101,6 +101,7 @@ class TestRowCount:
         score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_ctx(_count(2)))
         assert score.scorer == SCORER_NAME
         assert score.passed is True
+        assert score.basis == "observed"
         assert score.explanation is None
         outcome = _sole(score)
         assert outcome == ExpectationOutcome(kind="row_count", passed=True, expected="2", actual="2", detail=None)
@@ -110,6 +111,7 @@ class TestRowCount:
         result = ExecutionResult(rows=[], latency_seconds=0.0)
         score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_ctx(_count(1)))
         assert score.passed is False
+        assert score.basis == "observed"
         assert score.explanation is not None
         assert "expected 5 rows, got 1" in score.explanation
         outcome = _sole(score)

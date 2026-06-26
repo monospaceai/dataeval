@@ -7,5 +7,6 @@ most common entry points:
 | --- | --- |
 | `assert_eval`, `eval_case` | [Eval & cases](eval.md) |
 | `EvalCase`, `PlatformRef` | [Types](types.md) |
-| `ExpectationSuiteScorer`, `ResultSetEquivalence` | [Scorers](scorers.md) |
+| `ExpectationSuiteScorer`, `ResultSetEquivalence`, `LlmJudge` | [Scorers](scorers.md) |
 | `CallableSolver`, `PromptSolver` | [Solvers](solvers.md) |
+| `Llm`, `LiteLlm`, `resolve_llm` | [LLM](llm.md) |

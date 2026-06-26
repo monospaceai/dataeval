@@ -138,7 +138,51 @@ class _SpyScorer:
         self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
     ) -> ScoreResult:
         self.context = context
-        return ScoreResult(scorer="spy", passed=True)
+        return ScoreResult(scorer="spy", verdict="pass")
+
+
+class _FixedVerdictScorer:
+    """A stub Scorer returning a canned `ScoreResult` with the given verdict."""
+
+    def __init__(self, scorer: str, verdict: str) -> None:
+        self._scorer = scorer
+        self._verdict = verdict
+
+    def score(
+        self, case: EvalCase, output: SolverOutput, result: ExecutionResult, *, context: ScoreContext
+    ) -> ScoreResult:
+        return ScoreResult(scorer=self._scorer, verdict=self._verdict)  # ty: ignore[invalid-argument-type]
+
+
+@pytest.mark.unit
+class TestAssertEvalInconclusive:
+    def test_inconclusive_scorer_raises_and_renders_distinctly(self, duck: DuckDBAdapter) -> None:
+        case = _case([{"count": 2}])
+        solver = CallableSolver(lambda c: _ROCK_SQL)
+        with pytest.raises(AssertionError) as exc:
+            assert_eval(
+                case,
+                solver,
+                adapter=duck,
+                scorers=[_FixedVerdictScorer("semantic_equivalence", "inconclusive")],
+            )
+        msg = str(exc.value)
+        assert "INCONCLUSIVE" in msg
+        assert "FAIL" not in msg
+
+    def test_fail_scorer_renders_as_fail_not_inconclusive(self, duck: DuckDBAdapter) -> None:
+        case = _case([{"count": 2}])
+        solver = CallableSolver(lambda c: _ROCK_SQL)
+        with pytest.raises(AssertionError) as exc:
+            assert_eval(
+                case,
+                solver,
+                adapter=duck,
+                scorers=[_FixedVerdictScorer("result_set_equivalence", "fail")],
+            )
+        msg = str(exc.value)
+        assert "FAIL" in msg
+        assert "INCONCLUSIVE" not in msg
 
 
 @pytest.mark.unit

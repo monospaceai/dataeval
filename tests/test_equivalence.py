@@ -137,36 +137,39 @@ def _verdict(equivalence: str, *, method: str = "ast") -> SemanticVerdict:
 
 @pytest.mark.unit
 class TestCombine:
-    def test_no_verdicts_fails_as_undecided(self) -> None:
+    def test_no_verdicts_is_inconclusive(self) -> None:
         score = combine([], scorer=_SCORER)
         assert score.scorer == _SCORER
+        assert score.verdict == "inconclusive"
         assert score.passed is False
         assert score.explanation == "no semantic check could confirm equivalence"
 
-    def test_all_unknown_fails_as_undecided(self) -> None:
-        score = combine([_verdict("unknown"), _verdict("unknown", method="plan")], scorer=_SCORER)
+    def test_all_unknown_is_inconclusive_not_fail(self) -> None:
+        score = combine([_verdict("unknown"), _verdict("unknown")], scorer=_SCORER)
+        assert score.verdict == "inconclusive"
         assert score.passed is False
         assert score.explanation == "no semantic check could confirm equivalence"
         assert len(score.metadata["verdicts"]) == 2
 
     def test_equivalent_passes_with_no_explanation_or_diff(self) -> None:
         score = combine([_verdict("equivalent")], scorer=_SCORER)
+        assert score.verdict == "pass"
         assert score.passed is True
         assert score.explanation is None
         assert score.diff is None
 
     def test_first_confirmation_wins(self) -> None:
-        score = combine([_verdict("equivalent"), _verdict("unknown", method="plan")], scorer=_SCORER)
-        assert score.passed is True
+        score = combine([_verdict("equivalent"), _verdict("unknown")], scorer=_SCORER)
+        assert score.verdict == "pass"
 
     def test_skips_leading_unknowns_to_first_confirmation(self) -> None:
-        score = combine([_verdict("unknown"), _verdict("equivalent", method="plan")], scorer=_SCORER)
-        assert score.passed is True
+        score = combine([_verdict("unknown"), _verdict("equivalent")], scorer=_SCORER)
+        assert score.verdict == "pass"
 
     def test_records_every_verdict_in_metadata(self) -> None:
         score = combine(
-            [_verdict("unknown"), _verdict("unknown", method="plan"), _verdict("equivalent", method="llm")],
+            [_verdict("unknown"), _verdict("unknown"), _verdict("equivalent")],
             scorer=_SCORER,
         )
         methods = [v["method"] for v in score.metadata["verdicts"]]
-        assert methods == ["ast", "plan", "llm"]
+        assert methods == ["ast", "ast", "ast"]

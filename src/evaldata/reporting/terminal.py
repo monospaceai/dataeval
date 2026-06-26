@@ -18,7 +18,11 @@ def render_failure(
     result: ExecutionResult,
     failures: Sequence[ScoreResult],
 ) -> str:
-    """Render a scorer failure: the case, the generated SQL, and each failing score's diff.
+    """Render a scorer failure: the case, the generated SQL, and each failing score.
+
+    Each failing scorer is labelled with its verdict (`FAIL` or `INCONCLUSIVE`) so an
+    undecided result is visibly distinct from a refutation, annotated with its evidence
+    basis (e.g. `FAIL (observed)`) when one is present.
 
     Args:
         case: The eval case that failed.
@@ -37,7 +41,9 @@ def render_failure(
     if result.error is not None:
         lines.append(f"  execution error: {result.error.message}")
     for score in failures:
-        lines.append(f"  scorer {score.scorer!r}: FAIL")
+        lines.append(
+            f"  scorer {score.scorer!r}: {score.verdict.upper()}" + (f" ({score.basis})" if score.basis else "")
+        )
         if score.explanation:
             lines.append(f"    {score.explanation}")
         if score.diff is not None:

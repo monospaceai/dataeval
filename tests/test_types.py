@@ -942,18 +942,57 @@ class TestResultSetDiff:
 
 @pytest.mark.unit
 class TestScoreResult:
-    def test_minimal_passed(self) -> None:
-        result = ScoreResult(scorer="result_set_equivalence", passed=True)
+    def test_minimal_pass(self) -> None:
+        result = ScoreResult(scorer="result_set_equivalence", verdict="pass")
         assert result.scorer == "result_set_equivalence"
+        assert result.verdict == "pass"
         assert result.passed is True
+        assert result.score is None
         assert result.diff is None
         assert result.outcomes == []
         assert result.explanation is None
         assert result.metadata == {}
 
-    def test_minimal_failed(self) -> None:
-        result = ScoreResult(scorer="result_set_equivalence", passed=False)
+    def test_minimal_fail(self) -> None:
+        result = ScoreResult(scorer="result_set_equivalence", verdict="fail")
+        assert result.verdict == "fail"
         assert result.passed is False
+
+    def test_inconclusive(self) -> None:
+        result = ScoreResult(scorer="semantic_equivalence", verdict="inconclusive")
+        assert result.verdict == "inconclusive"
+        assert result.passed is False
+
+    def test_passed_is_true_only_for_pass(self) -> None:
+        assert ScoreResult(scorer="x", verdict="pass").passed is True
+        assert ScoreResult(scorer="x", verdict="fail").passed is False
+        assert ScoreResult(scorer="x", verdict="inconclusive").passed is False
+
+    def test_carries_score(self) -> None:
+        result = ScoreResult(scorer="x", verdict="pass", score=0.75)
+        assert result.score == 0.75
+
+    def test_minimal_pass_has_no_basis(self) -> None:
+        assert ScoreResult(scorer="x", verdict="pass").basis is None
+
+    @pytest.mark.parametrize("basis", ["proven", "observed", "judged"])
+    def test_pass_carries_basis(self, basis: str) -> None:
+        result = ScoreResult.model_validate({"scorer": "x", "verdict": "pass", "basis": basis})
+        assert result.basis == basis
+
+    @pytest.mark.parametrize("basis", ["proven", "observed", "judged"])
+    def test_fail_carries_basis(self, basis: str) -> None:
+        result = ScoreResult.model_validate({"scorer": "x", "verdict": "fail", "basis": basis})
+        assert result.basis == basis
+
+    def test_rejects_unknown_basis(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult.model_validate({"scorer": "x", "verdict": "pass", "basis": "guessed"})
+
+    def test_json_round_trip_with_basis(self) -> None:
+        result = ScoreResult(scorer="x", verdict="pass", basis="proven")
+        restored = ScoreResult.model_validate_json(result.model_dump_json())
+        assert restored == result
 
     def test_full_construction(self) -> None:
         diff = ResultSetDiff(
@@ -964,7 +1003,7 @@ class TestScoreResult:
         )
         result = ScoreResult(
             scorer="result_set_equivalence",
-            passed=False,
+            verdict="fail",
             diff=diff,
             explanation="2 missing rows; 3 value mismatches in revenue",
             metadata={"engine_version": "0.1.0"},
@@ -973,22 +1012,27 @@ class TestScoreResult:
         assert result.explanation is not None
         assert result.metadata["engine_version"] == "0.1.0"
 
-    def test_passed_can_carry_diff(self) -> None:
+    def test_pass_can_carry_diff(self) -> None:
         diff = ResultSetDiff(expected_row_count=5, actual_row_count=5)
-        result = ScoreResult(scorer="result_set_equivalence", passed=True, diff=diff)
+        result = ScoreResult(scorer="result_set_equivalence", verdict="pass", diff=diff)
         assert result.passed is True
         assert result.diff is not None
         assert result.diff.expected_row_count == 5
 
     def test_json_round_trip_minimal(self) -> None:
-        result = ScoreResult(scorer="result_set_equivalence", passed=True)
+        result = ScoreResult(scorer="result_set_equivalence", verdict="pass")
+        restored = ScoreResult.model_validate_json(result.model_dump_json())
+        assert restored == result
+
+    def test_json_round_trip_with_score(self) -> None:
+        result = ScoreResult(scorer="x", verdict="pass", score=0.5)
         restored = ScoreResult.model_validate_json(result.model_dump_json())
         assert restored == result
 
     def test_json_round_trip_with_diff(self) -> None:
         result = ScoreResult(
             scorer="result_set_equivalence",
-            passed=False,
+            verdict="fail",
             diff=ResultSetDiff(
                 expected_row_count=3,
                 actual_row_count=2,
@@ -1002,7 +1046,7 @@ class TestScoreResult:
     def test_json_round_trip_with_outcomes(self) -> None:
         result = ScoreResult(
             scorer="expectation_suite",
-            passed=False,
+            verdict="fail",
             outcomes=[
                 ExpectationOutcome(kind="row_count", passed=True, expected="2", actual="2"),
                 ExpectationOutcome(
@@ -1019,29 +1063,49 @@ class TestScoreResult:
         assert restored == result
 
     def test_default_outcomes_not_shared(self) -> None:
-        a = ScoreResult(scorer="x", passed=True)
-        b = ScoreResult(scorer="y", passed=True)
+        a = ScoreResult(scorer="x", verdict="pass")
+        b = ScoreResult(scorer="y", verdict="pass")
         a.outcomes.append(ExpectationOutcome(kind="row_count", passed=True))
         assert b.outcomes == []
 
     def test_rejects_empty_scorer(self) -> None:
         with pytest.raises(ValidationError):
-            ScoreResult(scorer="", passed=True)
+            ScoreResult(scorer="", verdict="pass")
 
     def test_rejects_empty_explanation(self) -> None:
         with pytest.raises(ValidationError):
             ScoreResult.model_validate(
-                {"scorer": "x", "passed": True, "explanation": ""},
+                {"scorer": "x", "verdict": "pass", "explanation": ""},
             )
 
     def test_rejects_extra_fields(self) -> None:
         with pytest.raises(ValidationError):
             ScoreResult.model_validate(
-                {"scorer": "x", "passed": True, "score": 0.5},
+                {"scorer": "x", "verdict": "pass", "unknown_field": 0.5},
             )
 
+    def test_rejects_invalid_verdict(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult.model_validate({"scorer": "x", "verdict": "maybe"})
+
+    def test_rejects_score_when_inconclusive(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult(scorer="x", verdict="inconclusive", score=0.5)
+
+    def test_rejects_basis_when_inconclusive(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult.model_validate({"scorer": "x", "verdict": "inconclusive", "basis": "proven"})
+
+    def test_rejects_score_above_one(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult(scorer="x", verdict="pass", score=1.5)
+
+    def test_rejects_score_below_zero(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreResult(scorer="x", verdict="pass", score=-0.1)
+
     def test_default_metadata_not_shared(self) -> None:
-        a = ScoreResult(scorer="x", passed=True)
-        b = ScoreResult(scorer="x", passed=True)
+        a = ScoreResult(scorer="x", verdict="pass")
+        b = ScoreResult(scorer="x", verdict="pass")
         a.metadata["touched"] = True
         assert b.metadata == {}

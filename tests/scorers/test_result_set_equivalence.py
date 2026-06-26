@@ -98,6 +98,7 @@ class TestResultSetEquivalence:
         score = _score(case, result, model)
         assert score.scorer == SCORER_NAME
         assert score.passed is True
+        assert score.basis == "observed"
         assert score.diff is None
 
     def test_fails_on_value_mismatch_and_carries_samples(self) -> None:
@@ -106,6 +107,7 @@ class TestResultSetEquivalence:
         result = ExecutionResult(rows=[{"count": 1298}], latency_seconds=0.0)
         score = _score(case, result, model)
         assert score.passed is False
+        assert score.basis == "observed"
         assert score.diff is not None
         assert score.diff.missing_row_count == 1
         assert score.diff.extra_row_count == 1
@@ -119,6 +121,7 @@ class TestResultSetEquivalence:
         )
         score = _score(case, result, "SELECT 1")
         assert score.passed is False
+        assert score.basis is None
         assert score.diff is None
         assert score.explanation is not None
         assert "relation does not exist" in score.explanation
@@ -315,6 +318,7 @@ class TestGoldQueryPath:
         result = ExecutionResult(rows=[{"id": 2, "v": 20}, {"id": 1, "v": 10}], latency_seconds=0.0)
         score = _score(case, result, model)
         assert score.passed is True
+        assert score.basis == "observed"
         assert score.diff is None
 
     def test_keyed_gold_per_column_mismatch(self) -> None:
@@ -325,6 +329,7 @@ class TestGoldQueryPath:
         result = ExecutionResult(rows=[{"id": 1, "v": 99}], latency_seconds=0.0)
         score = _score(case, result, "SELECT 1 AS id, 99 AS v")
         assert score.passed is False
+        assert score.basis == "observed"
         assert score.diff is not None
         assert len(score.diff.column_mismatches) == 1
         assert score.diff.column_mismatches[0].column == "v"
