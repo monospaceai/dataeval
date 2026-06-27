@@ -1,5 +1,7 @@
 """Tests for the `evaldata` CLI (`run` and `doctor`)."""
 
+import json
+import sqlite3
 import subprocess
 import sys
 import textwrap
@@ -71,12 +73,50 @@ class TestRun:
 
 
 @pytest.mark.unit
+class TestBench:
+    def _make_spider(self, root: Path) -> None:
+        db_dir = root / "database" / "clibench"
+        db_dir.mkdir(parents=True)
+        con = sqlite3.connect(db_dir / "clibench.sqlite")
+        con.execute("CREATE TABLE items (id INTEGER, name TEXT)")
+        con.executemany("INSERT INTO items VALUES (?, ?)", [(1, "a"), (2, "b")])
+        con.commit()
+        con.close()
+        (root / "dev.json").write_text(
+            json.dumps(
+                [
+                    {"db_id": "clibench", "question": "how many items?", "query": "SELECT count(*) FROM items"},
+                    {"db_id": "clibench", "question": "names?", "query": "SELECT name FROM items"},
+                ]
+            )
+        )
+
+    def test_prints_execution_accuracy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import litellm
+
+        self._make_spider(tmp_path)
+        # The mocked model always answers with the count query: it matches the first gold and
+        # misses the second, so EX is 1/2.
+        real_completion = litellm.completion
+        monkeypatch.setattr(
+            "litellm.completion",
+            lambda **kwargs: real_completion(**kwargs, mock_response="SELECT count(*) FROM items"),
+        )
+
+        result = runner.invoke(app, ["bench", "spider", str(tmp_path), "--model", "openai/gpt-4o-mini"])
+
+        assert result.exit_code == 0
+        assert "EX (spider): 50.0% (1/2)" in result.output
+
+
+@pytest.mark.unit
 class TestDoctor:
     @pytest.fixture(autouse=True)
     def _isolate_platform_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         for var in (
             "EVALDATA_DUCKDB_PATH",
             "EVALDATA_POSTGRES_CONNINFO",
+            "EVALDATA_SQLITE_PATH",
             "DATABRICKS_SERVER_HOSTNAME",
             "DATABRICKS_HTTP_PATH",
         ):
@@ -124,6 +164,7 @@ class TestDoctor:
         refs = _build_refs(
             duckdb=":memory:",
             postgres="",
+            sqlite=":memory:",
             databricks_server_hostname="h",
             databricks_http_path="/sql/1.0/warehouses/abc",
         )

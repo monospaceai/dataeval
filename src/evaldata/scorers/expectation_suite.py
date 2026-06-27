@@ -18,6 +18,7 @@ from evaldata.types import (
     RowCountExpectation,
     ScoreResult,
     SolverOutput,
+    TypedSchema,
     UniqueExpectation,
 )
 
@@ -66,7 +67,9 @@ class ExpectationSuiteScorer:
             )
 
         checked = result
-        if result.schema_ is not None and any(isinstance(e, ColumnTypeExpectation) for e in expected.expectations):
+        if isinstance(result.schema_, TypedSchema) and any(
+            isinstance(e, ColumnTypeExpectation) for e in expected.expectations
+        ):
             resolved = context.queries.resolved_schema(result.schema_, context.queries.model_sql)
             if isinstance(resolved, ExecutionError):
                 return ScoreResult(
@@ -124,13 +127,14 @@ def _evaluate_one(expectation: Expectation, result: ExecutionResult, queries: Qu
             )
         case ColumnTypeExpectation():
             expected_raw = expectation.expected_type.raw
-            if result.schema_ is None:
+            if not isinstance(result.schema_, TypedSchema):
+                # No schema, or an untyped one (e.g. SQLite reports no result-column types).
                 return ExpectationOutcome(
                     kind=expectation.kind,
                     passed=False,
                     column=expectation.column,
                     expected=expected_raw,
-                    detail=f"column_type: no column schema available for column {expectation.column!r}",
+                    detail=f"column_type: no column type information available for column {expectation.column!r}",
                 )
             types = dict(zip(result.schema_.names, result.schema_.types, strict=True))
             if expectation.column not in types:

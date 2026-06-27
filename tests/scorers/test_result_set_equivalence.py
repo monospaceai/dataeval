@@ -16,11 +16,11 @@ from evaldata.types import (
     GoldQuery,
     PlatformRef,
     RowCountExpectation,
-    Schema,
     SolverOutput,
     Sql,
     SqlType,
     TypedResultSet,
+    TypedSchema,
     UntypedResultSet,
 )
 
@@ -286,7 +286,7 @@ class TestGoldQueryPath:
         # The schema probe (LIMIT 0) succeeds; the COUNT(*) over the gold query errors.
         case = _case(GoldQuery(sql="SELECT 1 AS n"))
         result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
-        schema = Schema(root=[Column(name="n", type=SqlType.parse("INTEGER", "duckdb"))])
+        schema = TypedSchema(root=[Column(name="n", type=SqlType.parse("INTEGER", "duckdb"))])
         probe = ExecutionResult(rows=[], schema=schema, latency_seconds=0.0)
         score = _scripted_score(case, result, [probe, _err("count boom")])
         assert score.passed is False
@@ -300,7 +300,7 @@ class TestGoldQueryPath:
         case = _case(GoldQuery(sql="SELECT CAST(1 AS BIGINT) AS n"))
         result = ExecutionResult(
             rows=[{"n": 1}],
-            schema=Schema(root=[Column(name="n", type=SqlType.parse("INTEGER", "duckdb"))]),
+            schema=TypedSchema(root=[Column(name="n", type=SqlType.parse("INTEGER", "duckdb"))]),
             latency_seconds=0.0,
         )
         score = _score(case, result, "SELECT CAST(1 AS INTEGER) AS n")

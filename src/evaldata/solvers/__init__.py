@@ -2,6 +2,6 @@
 
 from evaldata.solvers.base import Solver
 from evaldata.solvers.callable import CallableSolver
-from evaldata.solvers.prompt import PromptSolver
+from evaldata.solvers.prompt import SCHEMA_PROMPT_TEMPLATE, PromptSolver
 
-__all__ = ["CallableSolver", "PromptSolver", "Solver"]
+__all__ = ["SCHEMA_PROMPT_TEMPLATE", "CallableSolver", "PromptSolver", "Solver"]

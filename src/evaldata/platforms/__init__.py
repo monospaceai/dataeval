@@ -5,7 +5,14 @@ from typing import TYPE_CHECKING, Any
 
 from evaldata.platforms.base import PlatformAdapter
 from evaldata.platforms.duckdb import DuckDBAdapter
-from evaldata.platforms.registry import databricks_platform, duckdb_platform, postgres_platform, resolve
+from evaldata.platforms.registry import (
+    databricks_platform,
+    duckdb_platform,
+    postgres_platform,
+    resolve,
+    sqlite_platform,
+)
+from evaldata.platforms.sqlite import SqliteAdapter
 
 if TYPE_CHECKING:
     from evaldata.platforms.databricks import DatabricksAdapter
@@ -16,10 +23,12 @@ __all__ = [
     "DuckDBAdapter",
     "PlatformAdapter",
     "PostgresAdapter",
+    "SqliteAdapter",
     "databricks_platform",
     "duckdb_platform",
     "postgres_platform",
     "resolve",
+    "sqlite_platform",
 ]
 
 _LAZY_ADAPTERS = {

@@ -1,7 +1,9 @@
 """The `evaldata` command-line interface."""
 
+import enum
 import subprocess
 import sys
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import typer
@@ -9,14 +11,19 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from evaldata.core import run_benchmark
+from evaldata.loaders import load_bird, load_spider
 from evaldata.platforms.registry import (
     close_all,
     databricks_platform,
     duckdb_platform,
     postgres_platform,
     resolve,
+    sqlite_platform,
 )
-from evaldata.types import PlatformRef
+from evaldata.scorers import ExecutionAccuracy
+from evaldata.solvers import SCHEMA_PROMPT_TEMPLATE, PromptSolver
+from evaldata.types import EvalCase, PlatformRef
 
 app = typer.Typer(help="AI evals for data & analytics engineering teams.", no_args_is_help=True)
 
@@ -52,10 +59,53 @@ def run(
     raise typer.Exit(completed.returncode)
 
 
+class _Dataset(enum.StrEnum):
+    """The benchmark datasets `bench` can run."""
+
+    spider = "spider"
+    bird = "bird"
+
+
+_LOADERS: dict[_Dataset, Callable[..., Iterator[EvalCase]]] = {
+    _Dataset.spider: load_spider,
+    _Dataset.bird: load_bird,
+}
+
+
+@app.command()
+def bench(
+    dataset: _Dataset = typer.Argument(..., help="The benchmark to run."),
+    path: Path = typer.Argument(..., help="Path to the unzipped dataset directory."),
+    model: str = typer.Option(..., "--model", help="litellm model id for the solver under test."),
+    split: str = typer.Option("dev", "--split", help="Dataset split to load."),
+    limit: int | None = typer.Option(None, "--limit", help="Run at most this many cases."),
+) -> None:
+    """Run a text-to-SQL benchmark and print its execution accuracy (EX).
+
+    Loads the dataset's cases, runs a single-prompt LLM solver (with the schema injected into
+    the prompt) against each, scores with `ExecutionAccuracy`, and prints the aggregate EX.
+
+    Args:
+        dataset: The benchmark to run (`spider` or `bird`).
+        path: Path to the unzipped dataset directory.
+        model: A litellm model id for the solver under test.
+        split: The dataset split to load (e.g. `dev`).
+        limit: Run at most this many cases, or all of them when omitted.
+    """
+    cases = _LOADERS[dataset](path, split=split)
+    solver = PromptSolver(model, prompt_template=SCHEMA_PROMPT_TEMPLATE, temperature=0)
+    try:
+        summary = run_benchmark(cases, solver, scorers=[ExecutionAccuracy()], limit=limit)
+    finally:
+        close_all()  # this CLI invocation owns the per-db adapters it resolved
+    Console().print(f"EX ({dataset.value}): {summary.accuracy:.1%} ({summary.passed}/{summary.total})")
+
+
 def _build_refs(
     *,
     duckdb: str | None,
     postgres: str | None,
+    sqlite: str | None = None,
     databricks_server_hostname: str | None = None,
     databricks_http_path: str | None = None,
 ) -> list[PlatformRef]:
@@ -68,6 +118,7 @@ def _build_refs(
     Args:
         duckdb: A DuckDB database path, or `None` if the flag was not given.
         postgres: A PostgreSQL conninfo, or `None` if the flag was not given.
+        sqlite: A SQLite database path, or `None` if the flag was not given.
         databricks_server_hostname: A Databricks workspace hostname, or `None`.
         databricks_http_path: A Databricks SQL Warehouse HTTP path, or `None`.
 
@@ -79,6 +130,8 @@ def _build_refs(
         refs.append(duckdb_platform(name="duckdb", path=duckdb))
     if postgres is not None:
         refs.append(postgres_platform(name="postgres", conninfo=postgres))
+    if sqlite is not None:
+        refs.append(sqlite_platform(name="sqlite", path=sqlite))
     if databricks_server_hostname is not None and databricks_http_path is not None:
         refs.append(
             databricks_platform(
@@ -126,6 +179,9 @@ def doctor(
         envvar="EVALDATA_POSTGRES_CONNINFO",
         help='PostgreSQL libpq conninfo to check (empty "" uses PG* env vars / libpq defaults).',
     ),
+    sqlite: str | None = typer.Option(
+        None, "--sqlite", metavar="PATH", envvar="EVALDATA_SQLITE_PATH", help="SQLite database path to check."
+    ),
     databricks_server_hostname: str | None = typer.Option(
         None,
         "--databricks-server-hostname",
@@ -147,6 +203,7 @@ def doctor(
         duckdb: A DuckDB database path to check (also read from `EVALDATA_DUCKDB_PATH`).
         postgres: A PostgreSQL conninfo to check (also read from
             `EVALDATA_POSTGRES_CONNINFO`).
+        sqlite: A SQLite database path to check (also read from `EVALDATA_SQLITE_PATH`).
         databricks_server_hostname: A Databricks workspace hostname to check (also read from
             `DATABRICKS_SERVER_HOSTNAME`); required together with `databricks_http_path`.
         databricks_http_path: A Databricks SQL Warehouse HTTP path to check (also read from
@@ -162,6 +219,7 @@ def doctor(
     refs = _build_refs(
         duckdb=duckdb,
         postgres=postgres,
+        sqlite=sqlite,
         databricks_server_hostname=databricks_server_hostname,
         databricks_http_path=databricks_http_path,
     )

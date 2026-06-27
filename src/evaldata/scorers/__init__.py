@@ -13,6 +13,7 @@ from evaldata.scorers.equivalence_presets import (
     observed_equivalence,
     sql_equivalence_judge,
 )
+from evaldata.scorers.execution_accuracy import ExecutionAccuracy
 from evaldata.scorers.expectation_suite import ExpectationSuiteScorer
 from evaldata.scorers.llm_judge import JUDGE_INSTRUCTION, JudgeExample, LlmJudge, RubricBand
 from evaldata.scorers.query import QueryRunner, ScalarResult
@@ -28,6 +29,7 @@ __all__ = [
     "JUDGE_INSTRUCTION",
     "AstEquivalence",
     "EquivalenceCheck",
+    "ExecutionAccuracy",
     "ExpectationSuiteScorer",
     "FirstDecisive",
     "JudgeExample",

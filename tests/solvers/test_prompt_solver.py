@@ -9,7 +9,7 @@ import os
 import pytest
 
 from evaldata.llm import StubLlm, TextCompletion, Usage
-from evaldata.solvers import Solver
+from evaldata.solvers import SCHEMA_PROMPT_TEMPLATE, Solver
 from evaldata.solvers.prompt import PromptSolver
 from evaldata.types import EvalCase, LlmError, PlatformRef, ProviderErrorKind, SQLDialect, UntypedResultSet
 
@@ -113,6 +113,18 @@ class TestPromptSolver:
         stub = StubLlm("SELECT 1")
         PromptSolver(model=stub, prompt_template="DIALECT={dialect} Q={input}").solve(_case(dialect="postgres"))
         assert stub.prompts[-1] == "DIALECT=postgres Q=How many tracks?"
+
+    def test_schema_ddl_injected_with_schema_template(self) -> None:
+        stub = StubLlm("SELECT 1")
+        case = EvalCase(
+            id="c",
+            input="how many tracks?",
+            expected=UntypedResultSet(rows=[]),
+            platform=PlatformRef(name="local", kind="duckdb"),
+            metadata={"schema_ddl": "CREATE TABLE tracks (id INTEGER)"},
+        )
+        PromptSolver(model=stub, prompt_template=SCHEMA_PROMPT_TEMPLATE).solve(case)
+        assert "CREATE TABLE tracks (id INTEGER)" in stub.prompts[-1]
 
     def test_satisfies_solver_protocol(self) -> None:
         assert isinstance(PromptSolver(model=StubLlm("SELECT 1")), Solver)

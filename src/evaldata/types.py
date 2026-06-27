@@ -14,7 +14,7 @@ from sqlglot.errors import SqlglotError
 Sql = NewType("Sql", str)
 
 # The supported set: dispatch over this Literal is exhaustively type-checked (match/assert_never).
-PlatformKind = Literal["duckdb", "postgres", "databricks"]
+PlatformKind = Literal["duckdb", "postgres", "databricks", "sqlite"]
 
 SQLDialect = Literal[
     "snowflake",
@@ -24,6 +24,7 @@ SQLDialect = Literal[
     "postgres",
     "redshift",
     "duckdb",
+    "sqlite",
 ]
 
 # A scorer-level test outcome: a confirmed pass, a refuted fail, or `"inconclusive"` when the
@@ -131,12 +132,13 @@ class Column(BaseModel):
     nullable: bool | None = None
 
 
-class Schema(RootModel[list[Column]]):
-    """An ordered, duplicate-faithful sequence of result-set columns.
+class TypedSchema(RootModel[list[Column]]):
+    """An ordered, duplicate-faithful sequence of typed result-set columns.
 
     Wraps a `list[Column]` and serialises as a plain JSON array. Name lookup is not
     offered: result sets may repeat column names, so the convenience accessors are
-    positional and duplicate-safe.
+    positional and duplicate-safe. Engines that report no result-column types produce an
+    `UntypedSchema` instead.
     """
 
     root: list[Column]
@@ -168,6 +170,25 @@ class Schema(RootModel[list[Column]]):
         return [c.type for c in self.root]
 
 
+class UntypedSchema(RootModel[list[str]]):
+    """An ordered sequence of result-column names with no type information.
+
+    Produced by engines whose driver reports no result-column types (e.g. SQLite). Carries
+    only names; type comparison against an `UntypedSchema` abstains rather than refuting.
+    """
+
+    root: list[str]
+
+    @property
+    def names(self) -> list[str]:
+        """The column names in order (duplicate-faithful)."""
+        return list(self.root)
+
+
+# A result set's schema: typed (every column has a `SqlType`) or untyped (names only).
+Schema = TypedSchema | UntypedSchema
+
+
 class UntypedResultSet(BaseModel):
     """Expected outcome as concrete rows without column types: value comparison only."""
 
@@ -184,7 +205,7 @@ class TypedResultSet(BaseModel):
 
     kind: Literal["typed_result_set"] = "typed_result_set"
     rows: list[dict[str, Any]]
-    schema_: Schema = Field(alias="schema")
+    schema_: TypedSchema = Field(alias="schema")
 
 
 class GoldQuery(BaseModel):
@@ -350,7 +371,7 @@ class EvalCase(BaseModel):
                 msg = f"expected schema has duplicate column name(s): {listed}"
                 raise ValueError(msg)
             dialect = self.platform.dialect or self.platform.kind
-            self.expected.schema_ = Schema(
+            self.expected.schema_ = TypedSchema(
                 root=[
                     Column(name=c.name, type=SqlType.parse(c.type.raw, dialect), nullable=c.nullable)
                     for c in self.expected.schema_

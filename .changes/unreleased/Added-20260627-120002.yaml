@@ -1,0 +1,3 @@
+kind: Added
+body: 'ExecutionAccuracy: the standard text-to-SQL execution-accuracy scorer — runs the gold query and the model''s SQL and compares the result rows positionally, order-insensitively unless the gold query sorts.'
+time: 2026-06-27T12:00:02Z

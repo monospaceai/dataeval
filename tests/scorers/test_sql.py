@@ -6,13 +6,13 @@ from decimal import Decimal
 import pytest
 
 from evaldata.scorers import sql
-from evaldata.types import Column, Schema, Sql, SqlType
+from evaldata.types import Column, Sql, SqlType, TypedSchema
 
 _MODEL = Sql("SELECT email FROM users")
 
 
-def _schema(*pairs: tuple[str, str], dialect: str = "duckdb") -> Schema:
-    return Schema(root=[Column(name=n, type=SqlType.parse(t, dialect)) for n, t in pairs])
+def _schema(*pairs: tuple[str, str], dialect: str = "duckdb") -> TypedSchema:
+    return TypedSchema(root=[Column(name=n, type=SqlType.parse(t, dialect)) for n, t in pairs])
 
 
 @pytest.mark.unit
@@ -157,7 +157,7 @@ class TestExpectedRelation:
     def test_unparseable_type_falls_back_to_bare_literal(self) -> None:
         # A type SQLGlot cannot parse keeps `raw` with `canonical=None`; the cell degrades
         # to a bare literal rather than raising.
-        schema = Schema(root=[Column(name="c", type=SqlType.parse("MY_CUSTOM_TYPE", "duckdb"))])
+        schema = TypedSchema(root=[Column(name="c", type=SqlType.parse("MY_CUSTOM_TYPE", "duckdb"))])
         out = sql.expected_relation([{"c": 1}], schema, ["c"], "duckdb", None).sql(dialect="duckdb")
         assert out == 'SELECT 1 AS "c"'
         assert "CAST" not in out

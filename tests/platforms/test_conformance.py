@@ -1,6 +1,7 @@
 """Shared `PlatformAdapter` conformance battery, parametrised over every adapter via `under_test`."""
 
 from evaldata.platforms.base import PlatformAdapter, execute_within_budget
+from evaldata.types import TypedSchema, UntypedSchema
 
 from .conftest import UnderTest
 
@@ -14,9 +15,13 @@ def test_execute_returns_rows_and_schema(under_test: UnderTest) -> None:
     assert result.error is None
     assert result.rows == [{"n": 1}]
     assert result.schema_ is not None
-    assert len(result.schema_) == 1
-    assert result.schema_[0].name == "n"
-    assert result.schema_[0].type  # non-empty native type string
+    assert result.schema_.names == ["n"]
+    if under_test.fixtures.reports_types:
+        assert isinstance(result.schema_, TypedSchema)
+        assert result.schema_[0].type.raw  # non-empty native type string
+    else:
+        # Engines that report no result-column types produce a names-only UntypedSchema.
+        assert isinstance(result.schema_, UntypedSchema)
 
 
 def test_empty_result_set_keeps_schema(under_test: UnderTest) -> None:
@@ -24,8 +29,7 @@ def test_empty_result_set_keeps_schema(under_test: UnderTest) -> None:
     assert result.error is None
     assert result.rows == []
     assert result.schema_ is not None
-    assert len(result.schema_) == 1
-    assert result.schema_[0].name == "n"
+    assert result.schema_.names == ["n"]
 
 
 def test_multiple_rows_returned(under_test: UnderTest) -> None:

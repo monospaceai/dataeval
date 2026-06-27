@@ -2,11 +2,12 @@
 
 from typing import TYPE_CHECKING, Any
 
-from evaldata.core import assert_eval
+from evaldata.core import BenchmarkSummary, assert_eval, run_benchmark
 from evaldata.llm import Llm
-from evaldata.loaders import eval_case
+from evaldata.loaders import eval_case, load_bird, load_spider
 from evaldata.scorers import (
     JUDGE_INSTRUCTION,
+    ExecutionAccuracy,
     ExpectationSuiteScorer,
     FirstDecisive,
     JudgeExample,
@@ -18,7 +19,7 @@ from evaldata.scorers import (
     observed_equivalence,
     sql_equivalence_judge,
 )
-from evaldata.solvers import CallableSolver, PromptSolver
+from evaldata.solvers import SCHEMA_PROMPT_TEMPLATE, CallableSolver, PromptSolver
 from evaldata.types import EvalCase, PlatformRef
 
 if TYPE_CHECKING:
@@ -26,8 +27,11 @@ if TYPE_CHECKING:
 
 __all__ = [
     "JUDGE_INSTRUCTION",
+    "SCHEMA_PROMPT_TEMPLATE",
+    "BenchmarkSummary",
     "CallableSolver",
     "EvalCase",
+    "ExecutionAccuracy",
     "ExpectationSuiteScorer",
     "FirstDecisive",
     "JudgeExample",
@@ -42,7 +46,10 @@ __all__ = [
     "assert_eval",
     "eval_case",
     "judged_equivalence",
+    "load_bird",
+    "load_spider",
     "observed_equivalence",
+    "run_benchmark",
     "sql_equivalence_judge",
 ]
 

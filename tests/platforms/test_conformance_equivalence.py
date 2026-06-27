@@ -21,12 +21,12 @@ from evaldata.types import (
     Expected,
     GoldQuery,
     PlatformRef,
-    Schema,
     ScoreResult,
     SolverOutput,
     Sql,
     SqlType,
     TypedResultSet,
+    TypedSchema,
 )
 
 from .conftest import connect_databricks, connect_postgres, render_model
@@ -93,8 +93,8 @@ def _score(
     )
 
 
-def _schema(*pairs: tuple[str, str], dialect: Dialect) -> Schema:
-    return Schema(root=[Column(name=n, type=SqlType.parse(t, dialect)) for n, t in pairs])
+def _schema(*pairs: tuple[str, str], dialect: Dialect) -> TypedSchema:
+    return TypedSchema(root=[Column(name=n, type=SqlType.parse(t, dialect)) for n, t in pairs])
 
 
 def _int_rows(values: list[int]) -> str:
@@ -245,7 +245,7 @@ def test_sample_cap_at_twenty(engine: tuple[PlatformAdapter, Dialect]) -> None:
 # ---------- keyed FULL OUTER JOIN path (match_key) ----------
 
 
-def _id_v_schema(dialect: Dialect, v_type: str = "INTEGER") -> Schema:
+def _id_v_schema(dialect: Dialect, v_type: str = "INTEGER") -> TypedSchema:
     return _schema(("id", "INTEGER"), ("v", v_type), dialect=dialect)
 
 
