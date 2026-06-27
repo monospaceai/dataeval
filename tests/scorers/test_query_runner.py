@@ -3,7 +3,7 @@
 import pytest
 
 from evaldata.scorers import QueryRunner
-from evaldata.types import Column, ExecutionError, ExecutionResult, Schema, Sql, SqlType
+from evaldata.types import Column, ExecutionError, ExecutionResult, Sql, SqlType, TypedSchema
 
 
 def _error(message: str) -> ExecutionError:
@@ -36,8 +36,8 @@ class _UnresolvedAdapter(_RecordingAdapter):
         return [SqlType.parse(str(r["type"]), "databricks") for r in rows]
 
 
-def _schema(*cols: tuple[str, str]) -> Schema:
-    return Schema(root=[Column(name=n, type=SqlType.parse(t, "databricks"), nullable=None) for n, t in cols])
+def _schema(*cols: tuple[str, str]) -> TypedSchema:
+    return TypedSchema(root=[Column(name=n, type=SqlType.parse(t, "databricks"), nullable=None) for n, t in cols])
 
 
 def _runner(results: list[ExecutionResult], budget: float | None) -> tuple[QueryRunner, _RecordingAdapter]:
@@ -166,7 +166,7 @@ class TestResolvedSchema:
         adapter = _UnresolvedAdapter([probe])
         runner = QueryRunner(adapter, Sql("SELECT amount, tags"), "databricks", None)
         out = runner.resolved_schema(_schema(("amount", "decimal"), ("tags", "array")), runner.model_sql)
-        assert isinstance(out, Schema)
+        assert isinstance(out, TypedSchema)
         assert out.types == [
             SqlType.parse("decimal(10,2)", "databricks"),
             SqlType.parse("array<string>", "databricks"),

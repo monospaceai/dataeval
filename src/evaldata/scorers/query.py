@@ -5,7 +5,7 @@ from typing import Any
 
 from evaldata.platforms.base import PlatformAdapter, TypeResolvingAdapter, execute_within_budget
 from evaldata.scorers.sql import Dialect
-from evaldata.types import Column, ExecutionError, ExecutionResult, Schema, Sql
+from evaldata.types import Column, ExecutionError, ExecutionResult, Sql, TypedSchema
 
 
 @dataclass(frozen=True)
@@ -106,7 +106,7 @@ class QueryRunner:
         (value,) = result.rows[0].values()
         return ScalarResult(value=value, error=None, latency_seconds=result.latency_seconds)
 
-    def resolved_schema(self, base: Schema, sql: Sql) -> Schema | ExecutionError:
+    def resolved_schema(self, base: TypedSchema, sql: Sql) -> TypedSchema | ExecutionError:
         """Return `base` with its column types resolved to the platform's precise types.
 
         Backends that already report precise types return `base` unchanged; otherwise the
@@ -118,7 +118,7 @@ class QueryRunner:
             sql: The statement that produced `base`, re-probed for precise types.
 
         Returns:
-            `base`, a new `Schema` with precise types, or an `ExecutionError`.
+            `base`, a new `TypedSchema` with precise types, or an `ExecutionError`.
         """
         adapter = self._adapter
         if not isinstance(adapter, TypeResolvingAdapter):
@@ -134,6 +134,6 @@ class QueryRunner:
                 kind="type_probe_failed",
                 message=f"type probe returned {len(types)} column type(s) for a {len(base.root)}-column result",
             )
-        return Schema(
+        return TypedSchema(
             root=[Column(name=c.name, type=t, nullable=c.nullable) for c, t in zip(base.root, types, strict=True)]
         )

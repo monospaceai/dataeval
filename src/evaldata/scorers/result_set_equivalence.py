@@ -27,6 +27,7 @@ from evaldata.types import (
     ScoreResult,
     SolverOutput,
     TypedResultSet,
+    TypedSchema,
     TypeMismatch,
     UntypedResultSet,
 )
@@ -44,7 +45,8 @@ class _ExpectedSource:
     """The expected side of the comparison, resolved from authored rows or a gold query.
 
     Attributes:
-        schema_: The expected schema supplying per-column types, or `None` for untyped rows.
+        schema_: The expected schema (typed supplies per-column types; untyped or `None`
+            means no types are available for comparison).
         names: The expected column names, in order.
         row_count: The number of expected rows (for diff reporting).
         relation: Builds the expected relation over the shared columns.
@@ -111,13 +113,17 @@ class ResultSetEquivalence:
 
         config = case.comparison
         actual_schema = result.schema_
-        if isinstance(expected, TypedResultSet) and actual_schema is not None:
-            actual_schema = context.queries.resolved_schema(actual_schema, context.queries.model_sql)
-            if isinstance(actual_schema, ExecutionError):
-                return _failure(f"could not resolve column types for type comparison: {actual_schema.message}")
+        # Type comparison only applies to typed schemas; an untyped actual (e.g. SQLite) abstains.
+        actual_typed = actual_schema if isinstance(actual_schema, TypedSchema) else None
+        if isinstance(expected, TypedResultSet) and actual_typed is not None:
+            resolved = context.queries.resolved_schema(actual_typed, context.queries.model_sql)
+            if isinstance(resolved, ExecutionError):
+                return _failure(f"could not resolve column types for type comparison: {resolved.message}")
+            actual_typed = resolved
         actual_names = _column_names(actual_schema, result.rows)
         columns = reconcile_columns(actual_names, source.names, config.column_order)
-        type_mismatches = _type_mismatches(actual_schema, source.schema_, columns.in_both)
+        source_typed = source.schema_ if isinstance(source.schema_, TypedSchema) else None
+        type_mismatches = _type_mismatches(actual_typed, source_typed, columns.in_both)
 
         if config.match_key:
             return _keyed_score(source, result, columns, type_mismatches, config, context.queries)
@@ -429,7 +435,7 @@ def _column_names(schema: Schema | None, rows: list[dict[str, Any]]) -> list[str
     """Resolve column names from a schema if present, else the first row's keys.
 
     Args:
-        schema: The result/expected schema, or `None`.
+        schema: The result schema (typed or untyped), or `None`.
         rows: The rows, used as a fallback for names.
 
     Returns:
@@ -442,12 +448,17 @@ def _column_names(schema: Schema | None, rows: list[dict[str, Any]]) -> list[str
     return []
 
 
-def _type_mismatches(actual: Schema | None, expected: Schema | None, in_both: list[str]) -> list[TypeMismatch]:
-    """Compare shared-column types when both schemas are present.
+def _type_mismatches(
+    actual: TypedSchema | None, expected: TypedSchema | None, in_both: list[str]
+) -> list[TypeMismatch]:
+    """Compare shared-column types when both schemas are typed.
+
+    An untyped actual or expected side arrives as `None` — type comparison abstains rather than
+    refuting when types are absent (e.g. SQLite reports no result types).
 
     Args:
-        actual: The actual schema, or `None`.
-        expected: The expected schema, or `None`.
+        actual: The actual typed schema, or `None`.
+        expected: The expected typed schema, or `None`.
         in_both: The shared columns to compare, in expected order.
 
     Returns:
@@ -469,14 +480,15 @@ def _numeric_columns(schema: Schema | None, in_both: list[str], dialect: sql.Dia
     """Resolve which shared columns are numeric, from the expected schema's types.
 
     Args:
-        schema: The expected schema, or `None` (then no column is treated as numeric).
+        schema: The expected schema; only a `TypedSchema` carries types — an untyped or absent
+            schema treats no column as numeric.
         in_both: The shared columns to classify.
         dialect: The dialect to parse the column types in.
 
     Returns:
         The subset of `in_both` whose expected type is numeric.
     """
-    if schema is None:
+    if not isinstance(schema, TypedSchema):
         return set()
     types = dict(zip(schema.names, schema.types, strict=True))
     return {col for col in in_both if col in types and sql.is_numeric_type(types[col].raw, dialect)}

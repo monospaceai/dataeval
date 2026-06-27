@@ -9,6 +9,7 @@ import sqlglot
 
 from evaldata.platforms.base import PlatformAdapter
 from evaldata.platforms.duckdb import DuckDBAdapter
+from evaldata.platforms.sqlite import SqliteAdapter
 from evaldata.scorers.sql import Dialect
 
 
@@ -38,6 +39,7 @@ class ConformanceFixtures(Protocol):
     references_missing_table: str  # references a non-existent table
     parse_error: str  # is syntactically invalid
     slow_query: str  # runs long enough to overrun a sub-second budget, and is interruptible
+    reports_types: bool  # whether the driver reports result-column types (False for SQLite)
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,30 @@ class DuckDBFixtures:
         "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t WHERE n < 100000000) "
         "SELECT count(*) AS n FROM t"
     )
+    reports_types: bool = True
+
+
+@dataclass(frozen=True)
+class SqliteFixtures:
+    """SQLite's concrete `ConformanceFixtures` — structurally satisfies the Protocol.
+
+    `SELECT FROM nope` is a genuine syntax error in SQLite (unlike Postgres, where it is only a
+    missing-relation error), so it serves as the `parse_error` case. The `slow_query` recursive
+    CTE mirrors DuckDB's: SQLite counts row by row and honours `interrupt()` between steps.
+    """
+
+    one_row_one_column: str = "SELECT 1 AS n"
+    empty_result: str = "SELECT 1 AS n WHERE 1=0"
+    three_rows: str = "SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3"
+    null_value: str = "SELECT NULL AS x"
+    duplicate_column_names: str = "SELECT 1 AS x, 2 AS x"
+    references_missing_table: str = "SELECT * FROM does_not_exist_xyz"
+    parse_error: str = "SELECT FROM nope"
+    slow_query: str = (
+        "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t WHERE n < 100000000) "
+        "SELECT count(*) AS n FROM t"
+    )
+    reports_types: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,6 +103,7 @@ class PostgresFixtures:
     references_missing_table: str = "SELECT * FROM does_not_exist_xyz"
     parse_error: str = "SLECT 1"
     slow_query: str = "SELECT pg_sleep(10)"
+    reports_types: bool = True
 
 
 @dataclass(frozen=True)
@@ -96,6 +123,7 @@ class DatabricksFixtures:
     references_missing_table: str = "SELECT * FROM does_not_exist_xyz"
     parse_error: str = "SLECT 1"
     slow_query: str = "SELECT count(*) AS n FROM range(0, 50000) a CROSS JOIN range(0, 50000) b WHERE a.id + b.id > -1"
+    reports_types: bool = True
 
 
 @dataclass(frozen=True)
@@ -108,6 +136,10 @@ class UnderTest:
 
 def _duckdb_under_test() -> UnderTest:
     return UnderTest(adapter=DuckDBAdapter(), fixtures=DuckDBFixtures())
+
+
+def _sqlite_under_test() -> UnderTest:
+    return UnderTest(adapter=SqliteAdapter(), fixtures=SqliteFixtures())
 
 
 def _postgres_dsn() -> str:
@@ -161,6 +193,7 @@ def _databricks_under_test() -> UnderTest:
 @pytest.fixture(
     params=[
         pytest.param(_duckdb_under_test, id="duckdb", marks=pytest.mark.unit),
+        pytest.param(_sqlite_under_test, id="sqlite", marks=pytest.mark.unit),
         pytest.param(_postgres_under_test, id="postgres", marks=pytest.mark.e2e),
         pytest.param(_databricks_under_test, id="databricks", marks=[pytest.mark.e2e, pytest.mark.cloud]),
     ],

@@ -23,6 +23,7 @@ from evaldata.types import (
     Sql,
     SqlType,
     UniqueExpectation,
+    UntypedSchema,
 )
 
 _OUTPUT = SolverOutput(output="SELECT ...")
@@ -263,13 +264,27 @@ class TestColumnType:
         assert outcome.expected == "BIGINT"
         assert outcome.actual is None
 
+    def test_fail_untyped_schema(self) -> None:
+        # The engine reports no result-column types (e.g. SQLite): the check can't be evaluated.
+        case = _suite(ColumnTypeExpectation(column="n", expected_type="BIGINT"))
+        result = ExecutionResult(rows=[{"n": 1}], schema=UntypedSchema(root=["n"]), latency_seconds=0.0)
+        score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_ctx())
+        assert score.passed is False
+        outcome = _sole(score)
+        assert outcome.passed is False
+        assert outcome.column == "n"
+        assert outcome.expected == "BIGINT"
+        assert outcome.actual is None
+        assert outcome.detail is not None
+        assert "no column type information" in outcome.detail
+
     def test_fail_no_schema(self) -> None:
         case = _suite(ColumnTypeExpectation(column="n", expected_type="BIGINT"))
         result = ExecutionResult(rows=[{"n": 1}], latency_seconds=0.0)
         score = ExpectationSuiteScorer().score(case, _OUTPUT, result, context=_ctx())
         assert score.passed is False
         assert score.explanation is not None
-        assert "no column schema available" in score.explanation
+        assert "no column type information" in score.explanation
         outcome = _sole(score)
         assert outcome.passed is False
         assert outcome.column == "n"

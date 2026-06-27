@@ -6,7 +6,16 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Protocol, runtime_checkable
 
-from evaldata.types import Column, ExecutionError, ExecutionErrorKind, ExecutionResult, Schema, SqlType
+from evaldata.types import (
+    Column,
+    ExecutionError,
+    ExecutionErrorKind,
+    ExecutionResult,
+    Schema,
+    SqlType,
+    TypedSchema,
+    UntypedSchema,
+)
 
 
 @runtime_checkable
@@ -14,10 +23,11 @@ class PlatformAdapter(Protocol):
     """Executes SQL against a data platform; returns rows + schema + latency.
 
     Required behavior:
-        * On success: return `ExecutionResult` with `rows` populated, `schema_`
-          populated (each `Column.type` is a `SqlType` built from the driver's
-          native type string parsed in the adapter's static dialect), non-negative
-          `latency_seconds`, and `error is None`.
+        * On success: return `ExecutionResult` with `rows` populated and `schema_`
+          populated — a `TypedSchema` (each `Column.type` a `SqlType` built from the
+          driver's native type string in the adapter's static dialect), or an
+          `UntypedSchema` (names only) when the driver reports no result-column types —
+          with non-negative `latency_seconds` and `error is None`.
         * On query failure: return `ExecutionResult` with `rows=[]`,
           `schema_=None`, an `error` describing the failure, and non-negative
           `latency_seconds`. **Do NOT raise.**
@@ -169,11 +179,7 @@ def execution_error(exc: Exception, kind: ExecutionErrorKind = "query_failed") -
 
 
 def rows_or_error(columns: list[Column], rows_raw: list[tuple[Any, ...]], latency_seconds: float) -> ExecutionResult:
-    """Build a successful `ExecutionResult`, or an error one if column names collide.
-
-    Rows are keyed by name (`dict(zip(...))`), which cannot represent two columns sharing
-    a name — the later value would silently overwrite the earlier. Rather than lose data,
-    duplicate output column names are surfaced as `ExecutionResult.error`.
+    """Build a successful typed `ExecutionResult`, or an error one if column names collide.
 
     Args:
         columns: The result-set columns, in order, as reported by the driver.
@@ -181,11 +187,49 @@ def rows_or_error(columns: list[Column], rows_raw: list[tuple[Any, ...]], latenc
         latency_seconds: Wall-clock time spent executing the query.
 
     Returns:
-        An `ExecutionResult` with name-keyed rows and schema, or `error` set (and no rows
-        or schema) when one or more column names are duplicated.
+        An `ExecutionResult` with name-keyed rows and a `TypedSchema`, or `error` set (and no
+        rows or schema) when one or more column names are duplicated.
     """
-    schema = Schema(root=columns)
-    names = schema.names
+    return _result_or_error(TypedSchema(root=columns), [c.name for c in columns], rows_raw, latency_seconds)
+
+
+def untyped_rows_or_error(names: list[str], rows_raw: list[tuple[Any, ...]], latency_seconds: float) -> ExecutionResult:
+    """Build a successful untyped `ExecutionResult`, or an error one if column names collide.
+
+    For engines whose driver reports no result-column types (e.g. SQLite): the schema carries
+    column names only.
+
+    Args:
+        names: The result-column names, in order, as reported by the driver.
+        rows_raw: The positional row tuples, aligned with `names`.
+        latency_seconds: Wall-clock time spent executing the query.
+
+    Returns:
+        An `ExecutionResult` with name-keyed rows and an `UntypedSchema`, or `error` set (and
+        no rows or schema) when one or more column names are duplicated.
+    """
+    return _result_or_error(UntypedSchema(root=names), names, rows_raw, latency_seconds)
+
+
+def _result_or_error(
+    schema: Schema, names: list[str], rows_raw: list[tuple[Any, ...]], latency_seconds: float
+) -> ExecutionResult:
+    """Key `rows_raw` by `names` under `schema`, or return an error if names collide.
+
+    Rows are keyed by name (`dict(zip(...))`), which cannot represent two columns sharing a
+    name — the later value would silently overwrite the earlier. Rather than lose data,
+    duplicate output column names are surfaced as `ExecutionResult.error`.
+
+    Args:
+        schema: The schema to attach (typed or untyped).
+        names: The column names, in order, aligned with `rows_raw`.
+        rows_raw: The positional row tuples.
+        latency_seconds: Wall-clock time spent executing the query.
+
+    Returns:
+        An `ExecutionResult` with name-keyed rows and `schema`, or `error` set (and no rows or
+        schema) when one or more column names are duplicated.
+    """
     duplicates = [name for name, count in Counter(names).items() if count > 1]
     if duplicates:
         listed = ", ".join(repr(name) for name in duplicates)

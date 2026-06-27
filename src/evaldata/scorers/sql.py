@@ -12,7 +12,7 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.errors import SqlglotError
 
-from evaldata.types import PlatformKind, Schema, Sql, SQLDialect
+from evaldata.types import PlatformKind, Sql, SQLDialect, TypedSchema
 
 Dialect = SQLDialect | PlatformKind
 
@@ -250,7 +250,7 @@ def _maybe_round(value: exp.Expression, round_it: bool, scale: int) -> exp.Expre
 
 def expected_relation(
     rows: list[dict[str, Any]],
-    schema: Schema | None,
+    schema: TypedSchema | None,
     in_both: list[str],
     dialect: Dialect,
     round_scale: int | None,

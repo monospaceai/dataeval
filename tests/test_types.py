@@ -24,12 +24,12 @@ from evaldata.types import (
     PlatformRef,
     ResultSetDiff,
     RowCountExpectation,
-    Schema,
     ScoreResult,
     SolverError,
     SolverOutput,
     SqlType,
     TypedResultSet,
+    TypedSchema,
     TypeMismatch,
     UniqueExpectation,
     UntypedResultSet,
@@ -185,27 +185,27 @@ class TestColumn:
 @pytest.mark.unit
 class TestSchema:
     def test_preserves_duplicate_names(self) -> None:
-        s = Schema([Column(name="a", type="INT"), Column(name="a", type="VARCHAR")])
+        s = TypedSchema([Column(name="a", type="INT"), Column(name="a", type="VARCHAR")])
         assert s.names == ["a", "a"]
         assert [t.raw for t in s.types] == ["INT", "VARCHAR"]
 
     def test_len_index_iter(self) -> None:
-        s = Schema([Column(name="a", type="INT"), Column(name="b", type="VARCHAR")])
+        s = TypedSchema([Column(name="a", type="INT"), Column(name="b", type="VARCHAR")])
         assert len(s) == 2
         assert s[1].name == "b"
         assert [c.name for c in s] == ["a", "b"]
 
     def test_names_and_types_positionally_aligned(self) -> None:
-        s = Schema([Column(name="x", type="INT"), Column(name="y", type="DOUBLE")])
+        s = TypedSchema([Column(name="x", type="INT"), Column(name="y", type="DOUBLE")])
         assert s.names == ["x", "y"]
         assert [t.raw for t in s.types] == ["INT", "DOUBLE"]
 
     def test_json_array_round_trip(self) -> None:
-        s = Schema([Column(name="id", type="INTEGER")])
+        s = TypedSchema([Column(name="id", type="INTEGER")])
         dumped = s.model_dump_json()
         assert dumped.startswith("[")
         assert '"schema_"' not in dumped
-        restored = Schema.model_validate_json(dumped)
+        restored = TypedSchema.model_validate_json(dumped)
         assert restored == s
 
     def test_coerces_from_plain_list(self) -> None:
@@ -214,7 +214,7 @@ class TestSchema:
             schema=[Column(name="id", type="INTEGER")],
             latency_seconds=0.1,
         )
-        assert isinstance(result.schema_, Schema)
+        assert isinstance(result.schema_, TypedSchema)
 
 
 @pytest.mark.unit

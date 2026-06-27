@@ -12,6 +12,17 @@ Question: {input}
 SQL:
 """
 
+SCHEMA_PROMPT_TEMPLATE = """Generate a {dialect} SQL query that answers the following question.
+Use only the tables and columns in the schema below.
+Return only the SQL query with no explanation or markdown.
+
+Schema:
+{schema}
+
+Question: {input}
+SQL:
+"""
+
 _SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)```", re.IGNORECASE)
 
 
@@ -45,8 +56,9 @@ class PromptSolver:
         Args:
             model: A litellm model identifier (e.g. `"openai/gpt-4o-mini"`), or an `Llm` to use
                 directly. `timeout` and `temperature` apply only to the model-string path.
-            prompt_template: A `str.format_map` template with `{dialect}` and `{input}` fields.
-                Defaults to `DEFAULT_PROMPT_TEMPLATE`.
+            prompt_template: A `str.format_map` template with `{dialect}`, `{input}`, and
+                optional `{schema}` fields. Defaults to `DEFAULT_PROMPT_TEMPLATE`; pass
+                `SCHEMA_PROMPT_TEMPLATE` to inject `case.metadata["schema_ddl"]`.
             timeout: Per-request timeout in seconds.
             temperature: Sampling temperature; `None` leaves the provider default. Use `0` for
                 deterministic output.
@@ -69,7 +81,8 @@ class PromptSolver:
             telemetry on success, or a typed `SolverError` on an expected failure.
         """
         dialect = case.platform.dialect or case.platform.kind
-        prompt = self._prompt_template.format_map({"dialect": dialect, "input": case.input})
+        schema = case.metadata.get("schema_ddl", "")
+        prompt = self._prompt_template.format_map({"dialect": dialect, "input": case.input, "schema": schema})
         completion = self._llm.complete_text(prompt)
         if isinstance(completion, LlmError):
             return SolverOutput(error=self._to_solver_error(completion))

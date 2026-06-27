@@ -4,6 +4,7 @@ from typing import assert_never
 
 from evaldata.platforms.base import PlatformAdapter
 from evaldata.platforms.duckdb import DuckDBAdapter
+from evaldata.platforms.sqlite import SqliteAdapter
 from evaldata.types import PlatformKind, PlatformRef
 
 
@@ -19,6 +20,20 @@ def duckdb_platform(name: str, path: str = ":memory:") -> PlatformRef:
         driver.
     """
     return PlatformRef(name=name, kind="duckdb", config={"path": path})
+
+
+def sqlite_platform(name: str, path: str = ":memory:") -> PlatformRef:
+    """Build a `PlatformRef` for an in-process SQLite database.
+
+    Args:
+        name: A unique name identifying this platform connection.
+        path: The SQLite database path. Defaults to `:memory:` (in-process).
+
+    Returns:
+        A serializable `PlatformRef` for the SQLite database. Building the ref needs no driver
+        (SQLite ships with the standard library).
+    """
+    return PlatformRef(name=name, kind="sqlite", config={"path": path})
 
 
 def postgres_platform(name: str, conninfo: str = "") -> PlatformRef:
@@ -71,6 +86,10 @@ def _build_duckdb(ref: PlatformRef) -> PlatformAdapter:
     return DuckDBAdapter(database=str(ref.config.get("path", ":memory:")))
 
 
+def _build_sqlite(ref: PlatformRef) -> PlatformAdapter:
+    return SqliteAdapter(database=str(ref.config.get("path", ":memory:")))
+
+
 def _build_postgres(ref: PlatformRef) -> PlatformAdapter:
     try:
         from evaldata.platforms.postgres import PostgresAdapter
@@ -109,6 +128,8 @@ def _build(ref: PlatformRef) -> PlatformAdapter:
     match kind:
         case "duckdb":
             return _build_duckdb(ref)
+        case "sqlite":
+            return _build_sqlite(ref)
         case "postgres":
             return _build_postgres(ref)
         case "databricks":
