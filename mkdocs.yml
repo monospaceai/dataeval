@@ -95,6 +95,7 @@ nav:
       - Evaluate against Databricks: guides/databricks.md
       - Check semantic equivalence: guides/semantic-equivalence.md
       - Score with an LLM judge: guides/llm-judge.md
+      - Run a text-to-SQL benchmark: guides/benchmarks.md
   - Concepts: concepts.md
   - API reference:
       - reference/index.md

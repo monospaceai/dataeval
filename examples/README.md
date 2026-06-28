@@ -19,6 +19,9 @@ Databricks SQL Warehouse, with a deterministic solver so the focus is the platfo
 `05_llm_judge` instead varies the **scorer**: a deterministic solver supplies the AI SQL so the
 only model call is the SQL-equivalence judge deciding what the syntax check cannot.
 
+`06_benchmark` instead varies the **data source**: rather than seeding its own cases, it loads a
+text-to-SQL benchmark (Spider-shaped here) and measures execution accuracy with `run_benchmark`.
+
 ## Tiers
 
 | Dir | Solver | Purpose | Needs |
@@ -28,6 +31,7 @@ only model call is the SQL-equivalence judge deciding what the syntax check cann
 | `03_hosted_ai` | `PromptSolver` → hosted model | Sense-checks the hosted-model plumbing with a mocked reply (no live call) | `evaldata[litellm]` |
 | `04_databricks` | `CallableSolver` (fixed SQL) | Runs the same cases against a live Databricks SQL Warehouse | `evaldata[databricks]` + a warehouse |
 | `05_llm_judge` | `CallableSolver` (fixed SQL) | Has the SQL-equivalence judge decide what the syntax check can't, with a mocked grader reply (no live call) | `evaldata[litellm]` |
+| `06_benchmark` | `PromptSolver` (mocked) | Loads a text-to-SQL benchmark and measures execution accuracy with `run_benchmark` | `evaldata[litellm]` |
 
 ### 01_deterministic
 The solver is a `CallableSolver` returning fixed SQL. `test_golden_questions.py` covers the
@@ -74,6 +78,14 @@ decides: one a CTE it confirms, one a wrong filter it refutes. The grader needs 
 structured-output-capable hosted model (`openai/gpt-4o-mini` by default, override with
 `EVALDATA_HOSTED_MODEL`). Its reply is mocked, so it runs without a live model call or an API key.
 
+### 06_benchmark
+Builds a tiny Spider-shaped dataset in a temp directory, loads it with `load_spider`, and runs
+`run_benchmark` with an `ExecutionAccuracy` scorer to compute aggregate execution accuracy (EX).
+The model reply is mocked per question (two right, one wrong), so EX lands below 100% as a real
+run would, without a live call or an API key. To run a real benchmark, `evaldata fetch spider`
+(or `bird`) and `evaldata bench spider --model ...` — see the
+[benchmark guide](../docs/guides/benchmarks.md).
+
 ## Running
 
 ```bash
@@ -94,4 +106,7 @@ DATABRICKS_SERVER_HOSTNAME=... DATABRICKS_HTTP_PATH=... \
 
 # 05 — runs mocked, no key needed:
 uv run pytest examples/05_llm_judge -q
+
+# 06 — runs mocked, no key needed:
+uv run pytest examples/06_benchmark -q
 ```
