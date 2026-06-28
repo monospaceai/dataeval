@@ -12,6 +12,8 @@ from evaldata import EvalCase, ResultSetEquivalence, assert_eval, eval_case
 from evaldata.platforms import duckdb_platform
 from evaldata.solvers import PromptSolver
 
+pytestmark = pytest.mark.e2e
+
 _DB_PATH = Path(tempfile.mkdtemp(prefix="evaldata_ex02_")) / "shop.duckdb"
 _PLATFORM = duckdb_platform(name="examples-local-ai", path=str(_DB_PATH))
 _MODEL = os.environ.get("EVALDATA_LOCAL_MODEL", "")
