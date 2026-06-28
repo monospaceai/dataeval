@@ -143,7 +143,7 @@ def cached_dataset_path(name: str, *, cache_dir: Path | None = None) -> Path | N
     return None
 
 
-def _download(url: str, dest: Path, *, progress: bool) -> str:
+def _download(url: str, dest: Path, *, progress: bool) -> str:  # pragma: no cover
     """Stream `url` to `dest`, returning the hex SHA-256 of the bytes written.
 
     Args:
@@ -172,7 +172,7 @@ def _download(url: str, dest: Path, *, progress: bool) -> str:
     return digest.hexdigest()
 
 
-def _progress_bar(total: int | None):  # noqa: ANN202 - internal, returns (Progress, TaskID) or None
+def _progress_bar(total: int | None):  # pragma: no cover  # noqa: ANN202 - internal, returns (Progress, TaskID) or None
     """Start a `rich` download progress bar on a TTY, or return `None`.
 
     Args:

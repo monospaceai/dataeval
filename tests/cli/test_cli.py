@@ -197,6 +197,75 @@ class TestBench:
 
 
 @pytest.mark.unit
+class TestBenchStats:
+    """Unit tests for `_bench_stats`: covers the difficulty=None skip (line 110)."""
+
+    def _make_report(self, id_: str, passed: bool) -> "object":
+        from evaldata.reporting.collector import CaseReport
+
+        return CaseReport(id=id_, input="q", passed=passed)
+
+    def test_skips_cases_without_difficulty(self) -> None:
+        from evaldata.cli import _bench_stats
+        from evaldata.core.runner import BenchmarkSummary
+
+        report = self._make_report("q1", True)
+        summary = BenchmarkSummary(total=1, passed=1, accuracy=1.0, cases=[report])
+        stats = _bench_stats(
+            summary,
+            {"q1": None},
+            dataset=cli._Dataset.spider,
+            model="m",
+            split="dev",
+        )
+        assert stats["by_difficulty"] == {}
+
+    def test_aggregates_difficulty_buckets(self) -> None:
+        from evaldata.cli import _bench_stats
+        from evaldata.core.runner import BenchmarkSummary
+
+        reports = [self._make_report("q1", True), self._make_report("q2", False)]
+        summary = BenchmarkSummary(total=2, passed=1, accuracy=0.5, cases=reports)
+        stats = _bench_stats(
+            summary,
+            {"q1": "simple", "q2": "simple"},
+            dataset=cli._Dataset.spider,
+            model="m",
+            split="dev",
+        )
+        assert stats["by_difficulty"]["simple"]["total"] == 2
+        assert stats["by_difficulty"]["simple"]["passed"] == 1
+        assert stats["by_difficulty"]["simple"]["accuracy"] == 0.5
+
+
+@pytest.mark.unit
+class TestFetchCommand:
+    def test_unknown_dataset_bad_parameter(self) -> None:
+        result = runner.invoke(app, ["fetch", "notadataset"])
+        assert result.exit_code == 2
+        assert "unknown dataset" in result.output
+
+    def test_success_prints_cached_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_root = tmp_path / "bird"
+        fake_root.mkdir(parents=True)
+        monkeypatch.setattr(cli, "fetch_benchmark", lambda *a, **kw: fake_root)
+        result = runner.invoke(app, ["fetch", "bird"])
+        assert result.exit_code == 0
+        assert "cached at:" in result.output
+
+    def test_runtime_error_exits_1_with_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        msg = "hash mismatch!"
+
+        def _fail(*args: object, **kwargs: object) -> None:
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(cli, "fetch_benchmark", _fail)
+        result = runner.invoke(app, ["fetch", "bird"])
+        assert result.exit_code == 1
+        assert "hash mismatch!" in result.output
+
+
+@pytest.mark.unit
 class TestDoctor:
     @pytest.fixture(autouse=True)
     def _isolate_platform_env(self, monkeypatch: pytest.MonkeyPatch) -> None:

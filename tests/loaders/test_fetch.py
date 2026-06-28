@@ -330,3 +330,297 @@ def test_unknown_name_raises_value_error(tmp_path: Path) -> None:
 def test_cached_dataset_path_none_when_absent(tmp_path: Path) -> None:
     assert cached_dataset_path("bird", cache_dir=tmp_path) is None
     assert cached_dataset_path("nope", cache_dir=tmp_path) is None
+
+
+@pytest.mark.unit
+def test_cache_root_explicit_dir(tmp_path: Path) -> None:
+    explicit = tmp_path / "my_cache"
+    assert fetch.cache_root(explicit) == explicit
+
+
+@pytest.mark.unit
+def test_cache_root_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVALDATA_CACHE_DIR", str(tmp_path / "from_env"))
+    result = fetch.cache_root(None)
+    assert result == tmp_path / "from_env"
+
+
+@pytest.mark.unit
+def test_cache_root_platformdirs_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When neither explicit dir nor env var is set, delegates to platformdirs."""
+    monkeypatch.delenv("EVALDATA_CACHE_DIR", raising=False)
+    result = fetch.cache_root(None)
+    # Just check it returns a Path — the exact value is platform-dependent.
+    assert isinstance(result, Path)
+
+
+@pytest.mark.unit
+def test_cache_root_missing_platformdirs(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.delenv("EVALDATA_CACHE_DIR", raising=False)
+    # Simulate platformdirs not being installed.
+    monkeypatch.setitem(sys.modules, "platformdirs", None)  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError, match="platformdirs is required"):
+        fetch.cache_root(None)
+
+
+@pytest.mark.unit
+def test_cached_dataset_path_parent_exists_but_no_valid_child(tmp_path: Path) -> None:
+    # Create the parent dir and put a directory in it that is NOT a valid cache.
+    parent = tmp_path / "datasets" / "bird"
+    child = parent / "abc123"
+    child.mkdir(parents=True)
+    # Missing both .evaldata-meta.json and dev.json → not valid.
+    assert cached_dataset_path("bird", cache_dir=tmp_path) is None
+
+
+# — the trust=False path is already tested via fetch_benchmark; cover the
+
+
+@pytest.mark.unit
+def test_verify_hash_unpinned_trusted_passes(tmp_path: Path) -> None:
+    source = BenchmarkSource(
+        name="test",
+        url="https://example.invalid/x.zip",
+        archive_sha256=None,
+        expected_cases=1,
+        split="dev",
+        license="MIT",
+        license_url="https://mit.example/",
+        databases_dirname="database",
+        nested_databases_zip=False,
+    )
+    # Must not raise.
+    fetch._verify_hash(source, "abc" * 20, tmp_path / "archive.zip", trust=True)
+
+
+@pytest.mark.unit
+def test_verify_hash_unpinned_untrusted_raises(tmp_path: Path) -> None:
+    source = BenchmarkSource(
+        name="test",
+        url="https://example.invalid/x.zip",
+        archive_sha256=None,
+        expected_cases=1,
+        split="dev",
+        license="MIT",
+        license_url="https://mit.example/",
+        databases_dirname="database",
+        nested_databases_zip=False,
+    )
+    temp = tmp_path / "archive.zip"
+    temp.write_bytes(b"data")
+    with pytest.raises(RuntimeError, match="not yet pinned"):
+        fetch._verify_hash(source, "abc" * 20, temp, trust=False)
+    # File should be deleted.
+    assert not temp.exists()
+
+
+@pytest.mark.unit
+def test_normalize_layout_missing_split_json(tmp_path: Path) -> None:
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    source = BenchmarkSource(
+        name="test",
+        url="",
+        archive_sha256=None,
+        expected_cases=0,
+        split="dev",
+        license="MIT",
+        license_url="",
+        databases_dirname="database",
+        nested_databases_zip=False,
+    )
+    with pytest.raises(RuntimeError, match="dev.json not found"):
+        fetch._normalize_layout(extracted, source)
+
+
+@pytest.mark.unit
+def test_normalize_layout_missing_databases_dir(tmp_path: Path) -> None:
+    extracted = tmp_path / "extracted"
+    wrapper = extracted / "wrapper"
+    wrapper.mkdir(parents=True)
+    (wrapper / "dev.json").write_text("[]")
+    # No databases dir.
+    source = BenchmarkSource(
+        name="test",
+        url="",
+        archive_sha256=None,
+        expected_cases=0,
+        split="dev",
+        license="MIT",
+        license_url="",
+        databases_dirname="database",
+        nested_databases_zip=False,
+    )
+    with pytest.raises(RuntimeError, match="database/ not found"):
+        fetch._normalize_layout(extracted, source)
+
+
+@pytest.mark.unit
+def test_normalize_layout_nested_zip_absent_does_not_crash(tmp_path: Path) -> None:
+    """nested_databases_zip=True but no <databases>.zip present — no error, skip."""
+    extracted = tmp_path / "extracted"
+    wrapper = extracted / "wrapper"
+    db_dir = wrapper / "dev_databases" / "shop"
+    db_dir.mkdir(parents=True)
+    (wrapper / "dev.json").write_text("[]")
+    _make_db(db_dir / "shop.sqlite")
+    source = BenchmarkSource(
+        name="test",
+        url="",
+        archive_sha256=None,
+        expected_cases=0,
+        split="dev",
+        license="MIT",
+        license_url="",
+        databases_dirname="dev_databases",
+        nested_databases_zip=True,  # zip should be extracted, but file is absent
+    )
+    root = fetch._normalize_layout(extracted, source)
+    assert (root / "dev.json").exists()
+
+
+@pytest.mark.unit
+def test_validate_integrity_check_database_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A SQLite file that raises DatabaseError on open → RuntimeError."""
+    source = BenchmarkSource(
+        name="test",
+        url="",
+        archive_sha256=None,
+        expected_cases=1,
+        split="dev",
+        license="MIT",
+        license_url="",
+        databases_dirname="database",
+        nested_databases_zip=False,
+    )
+    db_dir = tmp_path / "database" / "shop"
+    db_dir.mkdir(parents=True)
+    db_path = db_dir / "shop.sqlite"
+    db_path.write_bytes(b"notasqlite")
+
+    records = [{"db_id": "shop", "question": "q"}]
+    (tmp_path / "dev.json").write_text(json.dumps(records))
+
+    with pytest.raises(RuntimeError, match="SQLite|not a valid"):
+        fetch._validate(tmp_path, source)
+
+
+@pytest.mark.unit
+def test_validate_integrity_check_non_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A SQLite file that opens but whose integrity_check returns non-'ok' → RuntimeError."""
+    source = BenchmarkSource(
+        name="test",
+        url="",
+        archive_sha256=None,
+        expected_cases=1,
+        split="dev",
+        license="MIT",
+        license_url="",
+        databases_dirname="database",
+        nested_databases_zip=False,
+    )
+    db_dir = tmp_path / "database" / "shop"
+    db_dir.mkdir(parents=True)
+    db_path = db_dir / "shop.sqlite"
+    # Mock the connection so integrity_check returns a non-'ok' result.
+
+    class _FakeConn:
+        def execute(self, sql: str) -> "_FakeCursor":
+            return _FakeCursor()
+
+        def close(self) -> None: ...
+
+    class _FakeCursor:
+        def fetchone(self) -> tuple[str]:
+            return ("*** index corruption ***",)
+
+    monkeypatch.setattr(fetch.sqlite3, "connect", lambda *a, **kw: _FakeConn())
+
+    records = [{"db_id": "shop", "question": "q"}]
+    (tmp_path / "dev.json").write_text(json.dumps(records))
+    # The file just needs to exist for rglob to find it.
+    db_path.write_bytes(b"placeholder")
+
+    with pytest.raises(RuntimeError, match="failed integrity_check"):
+        fetch._validate(tmp_path, source)
+
+
+@pytest.mark.unit
+def test_force_redownload_ignores_valid_cache(fake_source: dict) -> None:
+    fake_source["install"](archive_sha256=fake_source["real_sha"])
+    # First download.
+    fetch_benchmark("bird", cache_dir=fake_source["cache"])
+    assert fake_source["calls"]["n"] == 1
+    # force=True → re-downloads even though cache is valid.
+    fetch_benchmark("bird", force=True, cache_dir=fake_source["cache"])
+    assert fake_source["calls"]["n"] == 2
+
+
+@pytest.mark.unit
+def test_bad_zip_file_raises_clear_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """is_zipfile returns True but ZipFile.extractall raises BadZipFile → RuntimeError."""
+    cache = tmp_path / "cache"
+    # Use a real (empty) zip so is_zipfile() passes, then make ZipFile raise BadZipFile.
+    valid_zip = tmp_path / "placeholder.zip"
+    with zipfile.ZipFile(valid_zip, "w"):
+        pass  # empty zip — is_zipfile returns True
+
+    monkeypatch.setattr(
+        fetch,
+        "_download",
+        lambda url, dest, *, progress: (dest.write_bytes(valid_zip.read_bytes()), "a" * 64)[1],
+    )
+
+    original_zipfile_cls = fetch.zipfile.ZipFile
+
+    class _BadZipFile:
+        def __init__(self, *a: object, **kw: object) -> None: ...
+
+        def __enter__(self) -> "_BadZipFile":
+            msg = "simulated extraction failure"
+            raise zipfile.BadZipFile(msg)
+
+        def __exit__(self, *a: object) -> None: ...
+
+    monkeypatch.setattr(fetch.zipfile, "ZipFile", _BadZipFile)
+
+    original = fetch.SOURCES["bird"]
+    fetch.SOURCES["bird"] = BenchmarkSource(
+        name="bird",
+        url="https://example.invalid/dev.zip",
+        archive_sha256="a" * 64,
+        expected_cases=3,
+        split="dev",
+        license="CC BY-SA 4.0",
+        license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+        databases_dirname="dev_databases",
+        nested_databases_zip=True,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="not a valid zip"):
+            fetch_benchmark("bird", cache_dir=cache)
+    finally:
+        fetch.SOURCES["bird"] = original
+        monkeypatch.setattr(fetch.zipfile, "ZipFile", original_zipfile_cls)
+
+
+@pytest.mark.unit
+def test_unpinned_trusted_prints_pin_hint(fake_source: dict, capsys: pytest.CaptureFixture[str]) -> None:
+    fake_source["install"](archive_sha256=None)
+    fetch_benchmark("bird", trust=True, cache_dir=fake_source["cache"])
+    captured = capsys.readouterr()
+    assert "pin this version" in captured.out
+    assert "archive_sha256=" in captured.out
+
+
+@pytest.mark.unit
+def test_force_overwrites_existing_destination(fake_source: dict) -> None:
+    fake_source["install"](archive_sha256=fake_source["real_sha"])
+    root1 = fetch_benchmark("bird", cache_dir=fake_source["cache"])
+    # Destination already exists; force re-download should overwrite it cleanly.
+    root2 = fetch_benchmark("bird", force=True, cache_dir=fake_source["cache"])
+    assert (root2 / "dev.json").is_file()
+    # Both calls land at the same content-addressed dir (same archive → same hash prefix).
+    assert root1 == root2

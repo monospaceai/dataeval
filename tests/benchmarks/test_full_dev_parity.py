@@ -156,7 +156,9 @@ def test_full_dev_parity(dataset: str, loader: Callable[[str], Iterator[EvalCase
     """Our scorer agrees with the official oracle on every clean (gold, prediction) over the dev set."""
     root = cached_dataset_path(dataset)
     if root is None:
-        pytest.fail(f"{dataset} not cached; run: evaldata fetch {dataset}")
+        # On-demand validation: CI deliberately never downloads these large, flaky-to-fetch
+        # datasets, so skip when uncached rather than fail.
+        pytest.skip(f"{dataset} not cached; run: evaldata fetch {dataset}")
     cases = list(loader(str(root)))
     comparisons = 0
     skips = 0
