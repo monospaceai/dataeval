@@ -45,10 +45,7 @@ class _ExpectedSource:
     """The expected side of the comparison, resolved from authored rows or a gold query.
 
     Attributes:
-        schema_: The expected schema (typed supplies per-column types; untyped or `None`
-            means no types are available for comparison).
-        names: The expected column names, in order.
-        row_count: The number of expected rows (for diff reporting).
+        schema_: The expected schema; untyped or `None` means no types are available to compare.
         relation: Builds the expected relation over the shared columns.
     """
 
@@ -157,14 +154,7 @@ class ResultSetEquivalence:
 
 
 def _gold_failure(error: ExecutionError) -> ScoreResult:
-    """Build a failing `ScoreResult` attributing `error` to the gold/reference query.
-
-    Args:
-        error: The underlying engine error from a gold-attributable derived query.
-
-    Returns:
-        A failing `ScoreResult` carrying `metadata["gold_query_failed"] = True`.
-    """
+    """Return a failing `ScoreResult` for a failed gold query, tagged `metadata["gold_query_failed"]=True`."""
     return ScoreResult(
         scorer=SCORER_NAME,
         verdict="fail",
@@ -233,14 +223,7 @@ def _resolve_gold(expected: GoldQuery, queries: QueryRunner) -> _ExpectedSource 
 
 
 def _failure(explanation: str) -> ScoreResult:
-    """Build a failing `ScoreResult` carrying `explanation`.
-
-    Args:
-        explanation: The human-readable reason the comparison could not pass.
-
-    Returns:
-        A failing `ScoreResult` with no diff.
-    """
+    """Return a failing `ScoreResult` carrying `explanation`."""
     return ScoreResult(scorer=SCORER_NAME, verdict="fail", explanation=explanation)
 
 

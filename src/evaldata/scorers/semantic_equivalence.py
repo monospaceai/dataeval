@@ -106,14 +106,7 @@ class AstEquivalence:
 
 
 def _unknown(detail: str) -> SemanticVerdict:
-    """Build an `"unknown"` AST verdict carrying `detail`.
-
-    Args:
-        detail: The human-readable reason the check could not confirm equivalence.
-
-    Returns:
-        A `SemanticVerdict` with `method="ast"` and `equivalence="unknown"`.
-    """
+    """Return an `"unknown"` AST verdict carrying `detail`."""
     return SemanticVerdict(method="ast", equivalence="unknown", detail=detail)
 
 

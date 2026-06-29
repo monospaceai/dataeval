@@ -93,6 +93,7 @@ nav:
       - Evaluate a local Ollama model: guides/local-ollama.md
       - Evaluate a hosted model: guides/hosted-model.md
       - Evaluate against Databricks: guides/databricks.md
+      - Evaluate against a dbt project: guides/dbt.md
       - Check semantic equivalence: guides/semantic-equivalence.md
       - Score with an LLM judge: guides/llm-judge.md
       - Run a text-to-SQL benchmark: guides/benchmarks.md
@@ -106,3 +107,4 @@ nav:
       - LLM: reference/llm.md
       - Equivalence: reference/equivalence.md
       - Platforms: reference/platforms.md
+      - dbt: reference/dbt.md

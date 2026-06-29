@@ -58,6 +58,9 @@ litellm = [
 benchmarks = [
     "platformdirs>=4.0",
 ]
+dbt = [
+    "pyyaml>=6",
+]
 tracing = [
     "openinference-instrumentation>=0.1.52",
     "opentelemetry-exporter-otlp>=1.42.1",
@@ -67,7 +70,7 @@ all-platforms = [
     "evaldata[postgres,snowflake,bigquery,databricks]",
 ]
 all = [
-    "evaldata[all-platforms,litellm,tracing,benchmarks]",
+    "evaldata[all-platforms,litellm,tracing,benchmarks,dbt]",
 ]
 
 [project.urls]
@@ -105,6 +108,11 @@ docs = [
     "mkdocs-material>=9.7",
     "mkdocstrings[python]>=1.0",
     "mike>=2.1",
+]
+# Regenerates the committed dbt fixture artifacts. Not part of the default dev install;
+# the tests read the committed artifacts and never invoke dbt.
+fixtures = [
+    "dbt-duckdb>=1.9",
 ]
 
 [tool.uv]

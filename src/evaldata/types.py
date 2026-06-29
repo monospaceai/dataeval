@@ -144,11 +144,7 @@ class TypedSchema(RootModel[list[Column]]):
     root: list[Column]
 
     def __iter__(self) -> Iterator[Column]:  # ty: ignore[invalid-method-override]
-        """Iterate the columns in order.
-
-        Returns:
-            An iterator over the columns.
-        """
+        """Return an iterator over the columns in order."""
         return iter(self.root)
 
     def __len__(self) -> int:
@@ -399,7 +395,7 @@ class EvalCase(BaseModel):
 
 
 class Error(BaseModel):
-    """Base for the typed failures returned as values, not raised.
+    """Base for the typed error types.
 
     Holds the fields every typed error shares. Subclasses add a `kind` discriminator and any
     domain-specific structured fields (an `ExecutionError`'s `sqlstate`, a `SolverError`'s
@@ -430,7 +426,7 @@ SolverErrorKind = ProviderErrorKind | Literal["empty_response", "invalid_structu
 
 
 class SolverError(Error):
-    """A typed, expected failure from a Solver call: returned as a value, not raised."""
+    """A typed, expected failure from a Solver call."""
 
     kind: SolverErrorKind
     provider: str | None = None
@@ -440,11 +436,7 @@ LlmErrorKind = ProviderErrorKind | Literal["malformed_output"]
 
 
 class LlmError(Error):
-    """A typed, expected failure from an `Llm.complete` call: returned as a value, not raised.
-
-    `kind` is a provider-call failure or `malformed_output` (the reply did not validate against
-    the requested `response_format`). `provider` carries the model's provider when reported.
-    """
+    """A typed, expected failure from an `Llm.complete` call."""
 
     kind: LlmErrorKind
     provider: str | None = None
@@ -487,13 +479,10 @@ ExecutionErrorKind = Literal["query_failed", "budget_exceeded", "duplicate_colum
 
 
 class ExecutionError(Error):
-    """A typed failure from running SQL against a platform, returned as a value, not raised.
+    """A typed failure from running SQL against a platform.
 
-    `kind` is a stable, low-cardinality classifier. `sqlstate` carries the driver's SQLSTATE
-    code when one is reported; `condition` carries an engine error condition/class (e.g.
-    Spark's `TABLE_OR_VIEW_NOT_FOUND`) when the driver exposes one, since not every engine
-    reports SQLSTATE; `params` carries the engine's structured message parameters when
-    available. All three are `None` when the driver does not report them.
+    `condition` carries the driver's error class/code string (e.g. Spark's
+    `TABLE_OR_VIEW_NOT_FOUND`) when it exposes one, since not every engine reports SQLSTATE.
     """
 
     kind: ExecutionErrorKind
@@ -503,11 +492,7 @@ class ExecutionError(Error):
 
 
 class NormalizationError(Error):
-    """A typed failure from parsing or normalizing SQL for comparison, returned as a value.
-
-    `non_deterministic` marks a query whose result is not a function of its inputs (e.g.
-    `rand()`, `current_timestamp`).
-    """
+    """A typed failure from parsing or normalizing SQL for comparison."""
 
     kind: Literal["parse_failed", "not_single_statement", "normalize_failed", "non_deterministic"]
 
@@ -589,11 +574,8 @@ class ExpectationOutcome(BaseModel):
 class ScoreResult(BaseModel):
     """The outcome of running a Scorer against an EvalCase: a verdict plus diagnostics.
 
-    `verdict` is the scorer-level test outcome: `"pass"`, `"fail"`, or `"inconclusive"`
-    (the test could neither confirm nor refute). `score` is an optional normalized graded
-    magnitude in `[0.0, 1.0]`, higher-is-better. `basis` is the evidence strength behind the
-    verdict, stamped by the scorer that decided it. Both `score` and `basis` must be absent
-    when the verdict is `"inconclusive"`, since an undecided result carries no evidence.
+    `score` and `basis` must be absent when `verdict` is `"inconclusive"` — an undecided result
+    carries no evidence.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -639,9 +621,7 @@ EquivalenceMethod = Literal["ast"]
 class SemanticVerdict(BaseModel):
     """One equivalence check's judgment on whether two queries are equivalent.
 
-    `equivalence` is `"equivalent"` when the check confirms, else `"unknown"` (it could not
-    confirm). A verdict never carries a diff; a refutation surfaces on a result-set
-    `ScoreResult.diff`. `detail` is a human-readable note on how the verdict was reached.
+    A verdict never carries a diff; a refutation surfaces as a result-set `ScoreResult.diff`.
     """
 
     model_config = ConfigDict(extra="forbid")

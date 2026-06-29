@@ -94,8 +94,7 @@ def execute_within_budget(adapter: PlatformAdapter, sql: str, max_seconds: float
     With `max_seconds` unset, runs `adapter.execute` directly. Otherwise runs it on a worker
     thread and waits up to `max_seconds`; if the query is still running, calls
     `adapter.cancel()` to abort it and returns an `ExecutionResult.error` describing the
-    overrun (a budget overrun is returned as a value, not raised). The cancelled query is
-    awaited so its connection is released before returning.
+    overrun. The cancelled query is awaited so its connection is released before returning.
 
     Args:
         adapter: The platform adapter to execute against.

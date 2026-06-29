@@ -11,6 +11,10 @@ test-cov *args:
 test-cloud *args:
     uv run --all-extras pytest -m cloud {{args}}
 
+# Regenerate the checked-in dbt fixture artifacts (needs the `fixtures` group: dbt-duckdb).
+dbt-fixture:
+    uv run --group fixtures bash tests/dbt/fixtures/jaffle_duckdb/regen.sh
+
 lint:
     uv run ruff check
     uv run ruff format --check

@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: jaffle
+    schema: main
+    description: Raw operational tables loaded into the warehouse.
+    tables:
+      - name: raw_customers
+        description: One row per registered customer.
+      - name: raw_orders
+        description: One row per placed order.
+
+models:
+  - name: stg_customers
+    description: Cleaned customer records, one row per customer.
+    columns:
+      - name: customer_id
+        description: Surrogate key for the customer.
+      - name: customer_name
+        description: The customer's display name.
+  - name: stg_orders
+    description: Cleaned order records, one row per order.
+    columns:
+      - name: order_id
+        description: Surrogate key for the order.
+  - name: customers
+    description: Customer dimension enriched with order activity.
+    columns:
+      - name: customer_id
+        description: Surrogate key for the customer.
+        data_tests:
+          - unique
+          - not_null
+      - name: lifetime_value
+        description: Total amount the customer has spent.

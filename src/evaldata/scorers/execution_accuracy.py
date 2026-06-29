@@ -275,26 +275,12 @@ def _samples(rows: list[_Row], tuples: list[_Tuple], wanted: Counter[_Tuple]) ->
 
 
 def _failure(explanation: str) -> ScoreResult:
-    """Build a failing `ScoreResult` carrying `explanation`.
-
-    Args:
-        explanation: The human-readable reason the case failed.
-
-    Returns:
-        A failing `ScoreResult` with no diff.
-    """
+    """Return a failing `ScoreResult` carrying `explanation`."""
     return ScoreResult(scorer=SCORER_NAME, verdict="fail", explanation=explanation)
 
 
 def _gold_failure(error: ExecutionError) -> ScoreResult:
-    """Build a failing `ScoreResult` attributing `error` to the gold query.
-
-    Args:
-        error: The underlying engine error from running the gold query.
-
-    Returns:
-        A failing `ScoreResult` carrying `metadata["gold_query_failed"] = True`.
-    """
+    """Return a failing `ScoreResult` for a failed gold query, tagged `metadata["gold_query_failed"]=True`."""
     return ScoreResult(
         scorer=SCORER_NAME,
         verdict="fail",
