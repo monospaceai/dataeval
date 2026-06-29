@@ -1,6 +1,7 @@
-"""Tests for the `evaldata` CLI (`run` and `doctor`)."""
+"""Tests for the `evaldata` CLI commands."""
 
 import json
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -16,6 +17,14 @@ from evaldata.cli import _build_refs, app
 from evaldata.types import PlatformKind
 
 runner = CliRunner()
+
+FIXTURE_DBT = Path(__file__).parent.parent / "dbt" / "fixtures" / "jaffle_duckdb"
+
+
+def _copy_dbt_project(tmp_path: Path) -> Path:
+    dest = tmp_path / "jaffle"
+    shutil.copytree(FIXTURE_DBT, dest, ignore=shutil.ignore_patterns("target", "logs", "dbt_packages"))
+    return dest
 
 
 @pytest.mark.unit
@@ -239,6 +248,89 @@ class TestBenchStats:
 
 
 @pytest.mark.unit
+class TestDbtBench:
+    def test_authored_prints_ex_and_writes_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import litellm
+
+        project = _copy_dbt_project(tmp_path)
+        (project / "golds.yml").write_text(
+            "- question: how many customers?\n  gold_sql: select count(*) as n from customers\n"
+        )
+        real_completion = litellm.completion
+        monkeypatch.setattr(
+            "litellm.completion",
+            lambda **kwargs: real_completion(**kwargs, mock_response="select count(*) as n from customers"),
+        )
+        artifact = tmp_path / "stats.json"
+
+        result = runner.invoke(
+            app,
+            [
+                "dbt-bench",
+                str(project),
+                "--model",
+                "openai/gpt-4o-mini",
+                "--golds",
+                str(project / "golds.yml"),
+                "--target-dir",
+                str(project / "artifacts"),
+                "--json",
+                str(artifact),
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "EX (dbt): 100.0% (1/1)" in result.output
+        stats = json.loads(artifact.read_text())
+        assert stats["mode"] == "authored"
+        assert stats["total"] == 1
+        assert stats["passed"] == 1
+
+    def test_model_mode_runs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import litellm
+
+        project = _copy_dbt_project(tmp_path)
+        real_completion = litellm.completion
+        monkeypatch.setattr(
+            "litellm.completion",
+            lambda **kwargs: real_completion(**kwargs, mock_response="select 1 as n"),
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "dbt-bench",
+                str(project),
+                "--model",
+                "openai/gpt-4o-mini",
+                "--mode",
+                "model",
+                "--target-dir",
+                str(project / "artifacts"),
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "EX (dbt): 0.0% (0/3)" in result.output
+
+    def test_profile_error_exits_1(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app, ["dbt-bench", str(tmp_path), "--model", "openai/gpt-4o-mini", "--target-dir", str(tmp_path)]
+        )
+        assert result.exit_code == 1
+        assert "dbt_project.yml" in result.output
+
+    def test_missing_golds_exits_1(self, tmp_path: Path) -> None:
+        project = _copy_dbt_project(tmp_path)
+        result = runner.invoke(
+            app,
+            ["dbt-bench", str(project), "--model", "openai/gpt-4o-mini", "--target-dir", str(project / "artifacts")],
+        )
+        assert result.exit_code == 1
+        assert "golds" in result.output
+
+
+@pytest.mark.unit
 class TestFetchCommand:
     def test_unknown_dataset_bad_parameter(self) -> None:
         result = runner.invoke(app, ["fetch", "notadataset"])
@@ -330,6 +422,18 @@ class TestDoctor:
         result = runner.invoke(app, ["doctor", "--databricks-server-hostname", "h"])
         assert result.exit_code == 2
         assert "together" in result.output
+
+    def test_dbt_project_resolves_and_probes(self, tmp_path: Path) -> None:
+        project = _copy_dbt_project(tmp_path)
+        result = runner.invoke(app, ["doctor", "--dbt-project", str(project)])
+        assert result.exit_code == 0
+        assert "duckdb" in result.output
+        assert "OK" in result.output
+
+    def test_dbt_project_resolution_failure_is_fail(self, tmp_path: Path) -> None:
+        result = runner.invoke(app, ["doctor", "--dbt-project", str(tmp_path)])
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
 
 
 _EVAL_TEST = """

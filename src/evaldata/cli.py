@@ -15,6 +15,7 @@ from rich.text import Text
 
 from evaldata.core import run_benchmark
 from evaldata.core.runner import BenchmarkSummary
+from evaldata.dbt import DbtError, load_dbt, platform_from_profile
 from evaldata.loaders import load_bird, load_spider
 from evaldata.loaders.benchmarks import SOURCES, cached_dataset_path, fetch_benchmark
 from evaldata.platforms.registry import (
@@ -199,6 +200,93 @@ def bench(
         json_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
 
 
+class _DbtMode(enum.StrEnum):
+    """How `dbt-bench` builds cases."""
+
+    authored = "authored"
+    model = "model"
+
+
+@app.command(name="dbt-bench")
+def dbt_bench(
+    project_dir: Path = typer.Argument(..., help="dbt project directory (holds dbt_project.yml and profiles.yml)."),
+    model: str = typer.Option(..., "--model", help="litellm model id for the solver under test."),
+    golds: Path | None = typer.Option(None, "--golds", help="Gold-cases YAML file (required for --mode authored)."),
+    mode: _DbtMode = typer.Option(
+        _DbtMode.authored, "--mode", help="Build cases from a golds file or documented models."
+    ),
+    target_dir: Path | None = typer.Option(
+        None, "--target-dir", help="dbt artifacts directory; defaults to <project_dir>/target."
+    ),
+    profiles_dir: Path | None = typer.Option(
+        None, "--profiles-dir", help="Directory holding profiles.yml; defaults to the project directory."
+    ),
+    target: str | None = typer.Option(
+        None, "--target", help="dbt profile target name; defaults to the profile's target."
+    ),
+    limit: int | None = typer.Option(None, "--limit", help="Run at most this many cases."),
+    json_path: Path | None = typer.Option(
+        None, "--json", metavar="PATH", help="Also write a JSON stats artifact to PATH."
+    ),
+) -> None:
+    """Run a dbt project as a text-to-SQL benchmark and print its execution accuracy (EX).
+
+    Resolves the project's warehouse from its dbt profile, builds cases from a golds file
+    (`authored`) or the project's documented models (`model`), runs a single-prompt LLM solver
+    with the project's schema in the prompt, scores each case with order-insensitive set
+    execution accuracy, and prints the aggregate EX.
+
+    Args:
+        project_dir: The dbt project directory (holding `dbt_project.yml`).
+        model: A litellm model id for the solver under test.
+        golds: Path to the gold-cases YAML file (required for `authored` mode).
+        mode: `authored` to read `golds`, or `model` to derive cases from documented models.
+        target_dir: The dbt artifacts directory; defaults to `<project_dir>/target`.
+        profiles_dir: Directory holding `profiles.yml`; defaults to `project_dir`.
+        target: The dbt profile target name; defaults to the profile's `target`.
+        limit: Run at most this many cases, or all of them when omitted.
+        json_path: If given, also write a JSON stats artifact to this path.
+
+    Raises:
+        Exit: With code 1 if the profile or cases cannot be resolved.
+    """
+    console = Console()
+    platform = platform_from_profile(project_dir, profiles_dir=profiles_dir, target=target)
+    if isinstance(platform, DbtError):
+        console.print(Text(platform.message, style="red"))
+        raise typer.Exit(1)
+
+    artifacts = target_dir if target_dir is not None else project_dir / "target"
+    cases = load_dbt(
+        artifacts,
+        platform=platform,
+        golds=golds,
+        mode="authored" if mode is _DbtMode.authored else "model",
+    )
+    if isinstance(cases, DbtError):
+        console.print(Text(cases.message, style="red"))
+        raise typer.Exit(1)
+
+    solver = PromptSolver(model, prompt_template=SCHEMA_PROMPT_TEMPLATE, temperature=0)
+    scorer = ExecutionAccuracy(row_order="ignore", multiplicity="set")
+    try:
+        summary = run_benchmark(cases, solver, scorers=[scorer], limit=limit)
+    finally:
+        close_all()  # this CLI invocation owns the adapter it resolved
+
+    console.print(f"EX (dbt): {summary.accuracy:.1%} ({summary.passed}/{summary.total})")
+    if json_path is not None:
+        stats = {
+            "model": model,
+            "mode": mode.value,
+            "total": summary.total,
+            "passed": summary.passed,
+            "accuracy": summary.accuracy,
+            "cases": [r.model_dump(mode="json") for r in summary.cases],
+        }
+        json_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+
+
 @app.command()
 def fetch(
     dataset: str = typer.Argument(..., help="The benchmark dataset to download."),
@@ -330,6 +418,9 @@ def doctor(
         envvar="DATABRICKS_HTTP_PATH",
         help="Databricks SQL Warehouse HTTP path to check (paired with --databricks-server-hostname).",
     ),
+    dbt_project: Path | None = typer.Option(
+        None, "--dbt-project", metavar="DIR", help="dbt project directory to resolve via its profile and check."
+    ),
 ) -> None:
     """Check that the given platform connections work (one --<kind> flag per platform).
 
@@ -342,6 +433,8 @@ def doctor(
             `DATABRICKS_SERVER_HOSTNAME`); required together with `databricks_http_path`.
         databricks_http_path: A Databricks SQL Warehouse HTTP path to check (also read from
             `DATABRICKS_HTTP_PATH`); required together with `databricks_server_hostname`.
+        dbt_project: A dbt project directory whose profile target is resolved to a platform and
+            checked.
 
     Raises:
         BadParameter: If no platform flag is provided, or only one of the two Databricks flags is.
@@ -357,8 +450,15 @@ def doctor(
         databricks_server_hostname=databricks_server_hostname,
         databricks_http_path=databricks_http_path,
     )
-    if not refs:
-        msg = "specify at least one platform, e.g. --duckdb PATH or --postgres CONNINFO"
+    dbt_failure: DbtError | None = None
+    if dbt_project is not None:
+        resolved = platform_from_profile(dbt_project)
+        if isinstance(resolved, DbtError):
+            dbt_failure = resolved
+        else:
+            refs.append(resolved)
+    if not refs and dbt_failure is None:
+        msg = "specify at least one platform, e.g. --duckdb PATH or --dbt-project DIR"
         raise typer.BadParameter(msg)
 
     console = Console()
@@ -377,6 +477,10 @@ def doctor(
             table.add_row(ref.name, ref.kind, Text(f"{mark} {detail}", style="green" if ok else "red"))
     finally:
         close_all()  # this CLI invocation owns the adapters it resolved
+
+    if dbt_failure is not None:
+        all_ok = False
+        table.add_row("dbt", "—", Text(f"FAIL {dbt_failure.message}", style="red"))
 
     console.print(table)
     if not all_ok:
