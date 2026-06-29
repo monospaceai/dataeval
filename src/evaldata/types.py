@@ -395,7 +395,7 @@ class EvalCase(BaseModel):
 
 
 class Error(BaseModel):
-    """Base for the typed failures returned as values, not raised.
+    """Base for the typed error types.
 
     Holds the fields every typed error shares. Subclasses add a `kind` discriminator and any
     domain-specific structured fields (an `ExecutionError`'s `sqlstate`, a `SolverError`'s
@@ -426,7 +426,7 @@ SolverErrorKind = ProviderErrorKind | Literal["empty_response", "invalid_structu
 
 
 class SolverError(Error):
-    """A typed, expected failure from a Solver call: returned as a value, not raised."""
+    """A typed, expected failure from a Solver call."""
 
     kind: SolverErrorKind
     provider: str | None = None
@@ -436,7 +436,7 @@ LlmErrorKind = ProviderErrorKind | Literal["malformed_output"]
 
 
 class LlmError(Error):
-    """A typed, expected failure from an `Llm.complete` call: returned as a value, not raised."""
+    """A typed, expected failure from an `Llm.complete` call."""
 
     kind: LlmErrorKind
     provider: str | None = None
@@ -479,7 +479,7 @@ ExecutionErrorKind = Literal["query_failed", "budget_exceeded", "duplicate_colum
 
 
 class ExecutionError(Error):
-    """A typed failure from running SQL against a platform, returned as a value, not raised.
+    """A typed failure from running SQL against a platform.
 
     `condition` carries the driver's error class/code string (e.g. Spark's
     `TABLE_OR_VIEW_NOT_FOUND`) when it exposes one, since not every engine reports SQLSTATE.
@@ -492,7 +492,7 @@ class ExecutionError(Error):
 
 
 class NormalizationError(Error):
-    """A typed failure from parsing or normalizing SQL for comparison, returned as a value."""
+    """A typed failure from parsing or normalizing SQL for comparison."""
 
     kind: Literal["parse_failed", "not_single_statement", "normalize_failed", "non_deterministic"]
 
