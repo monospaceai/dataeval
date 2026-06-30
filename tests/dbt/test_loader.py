@@ -54,7 +54,12 @@ def test_authored_cases(tmp_path: Path) -> None:
 def test_model_mode(tmp_path: Path) -> None:
     cases = load_dbt(ARTIFACTS, platform=PLATFORM, mode="model")
     assert not isinstance(cases, DbtError)
-    assert [c.id for c in cases] == ["dbt/model/stg_customers", "dbt/model/stg_orders", "dbt/model/customers"]
+    assert [c.id for c in cases] == [
+        "dbt/model/stg_customers",
+        "dbt/model/stg_orders",
+        "dbt/model/all_days",
+        "dbt/model/customers",
+    ]
     customers = cases[-1]
     assert customers.input == "Customer dimension enriched with order activity."
     assert isinstance(customers.expected, GoldQuery)

@@ -311,7 +311,7 @@ class TestDbtBench:
         )
 
         assert result.exit_code == 0, result.output
-        assert "EX (dbt): 0.0% (0/3)" in result.output
+        assert "EX (dbt): 0.0% (0/4)" in result.output
 
     def test_tests_mode_runs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import litellm

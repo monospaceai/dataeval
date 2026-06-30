@@ -1,17 +1,24 @@
 """dbt integration: load a dbt project's artifacts into evaldata types.
 
-`DbtContext` reads a built dbt `target/` directory (manifest.json + optional catalog.json)
-and exposes models, sources, and schema context. `load_dbt` converts them into eval cases;
-`platform_from_profile` resolves the project's warehouse connection from a dbt profile.
+`DbtContext` reads a built dbt `target/` directory (manifest.json, optional catalog.json, and
+optional semantic_manifest.json) and exposes models, sources, schema context, and the semantic
+layer's metrics and dimensions. `load_dbt` converts them into eval cases; `platform_from_profile`
+resolves the project's warehouse connection from a dbt profile.
 """
 
 from evaldata.dbt.context import (
     Column,
     DbtContext,
     DbtTest,
+    Dimension,
+    Entity,
+    Measure,
+    Metric,
     ModelRef,
     Relation,
     SchemaContext,
+    SemanticLayerContext,
+    SemanticModel,
     SourceRef,
     TableSchema,
 )
@@ -24,10 +31,16 @@ __all__ = [
     "DbtContext",
     "DbtError",
     "DbtTest",
+    "Dimension",
+    "Entity",
+    "Measure",
+    "Metric",
     "Mode",
     "ModelRef",
     "Relation",
     "SchemaContext",
+    "SemanticLayerContext",
+    "SemanticModel",
     "SourceRef",
     "TableSchema",
     "load_dbt",
