@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from evaldata.dbt.errors import DbtError
-from evaldata.types import MetricQuery
+from evaldata.dbt.semantic_layer import MetricQuery
 
 # A group-by, order-by, or metric item resolved to its identifying parts: the MetricFlow spec
 # class, element name, entity-link path, time grain, and date part.

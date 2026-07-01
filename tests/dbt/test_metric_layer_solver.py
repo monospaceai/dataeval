@@ -1,10 +1,11 @@
 """Tests for `MetricLayerSolver`, driven through a `StubLlm` (no litellm, no network)."""
 
 import pytest
+from pydantic import ValidationError
 
+from evaldata.dbt import MetricCase, MetricLayerSolver, MetricQuery, MetricSolver, MetricSolverOutput
 from evaldata.llm import Completion, StubLlm, Usage
-from evaldata.solvers import MetricLayerSolver, Solver
-from evaldata.types import EvalCase, LlmError, MetricQuery, PlatformRef, ProviderErrorKind, UntypedResultSet
+from evaldata.types import LlmError, PlatformRef, ProviderErrorKind, SolverError
 
 pytestmark = pytest.mark.unit
 
@@ -20,13 +21,14 @@ class _FixedLlm:
         return Completion(parsed=self._query, usage=self._usage)
 
 
-def _case(sl_context: str = "Metrics:\n  revenue (simple)") -> EvalCase:
-    return EvalCase(
+def _case(sl_context: str = "Metrics:\n  revenue (simple)") -> MetricCase:
+    return MetricCase(
         id="c",
         input="Total revenue?",
-        expected=UntypedResultSet(rows=[]),
+        gold=MetricQuery(metrics=["revenue"]),
         platform=PlatformRef(name="local", kind="duckdb"),
-        metadata={"sl_context": sl_context},
+        target_dir="target",
+        sl_context=sl_context,
     )
 
 
@@ -80,4 +82,14 @@ class TestMetricLayerSolver:
         assert MetricLayerSolver("openai/gpt-4o-mini")._model == "openai/gpt-4o-mini"
 
     def test_satisfies_solver_protocol(self) -> None:
-        assert isinstance(MetricLayerSolver(model=StubLlm(MetricQuery(metrics=["revenue"]))), Solver)
+        assert isinstance(MetricLayerSolver(model=StubLlm(MetricQuery(metrics=["revenue"]))), MetricSolver)
+
+
+class TestMetricSolverOutput:
+    def test_rejects_neither_query_nor_error(self) -> None:
+        with pytest.raises(ValidationError):
+            MetricSolverOutput()
+
+    def test_rejects_both_query_and_error(self) -> None:
+        with pytest.raises(ValidationError):
+            MetricSolverOutput(query=MetricQuery(metrics=["revenue"]), error=SolverError(kind="auth", message="bad"))

@@ -10,52 +10,22 @@ from types import SimpleNamespace
 
 import pytest
 
-from evaldata.dbt import DbtError, MetricSpecEquivalence, canonicalize
-from evaldata.dbt.metric_spec_equivalence import TARGET_DIR_KEY
+from evaldata.dbt import DbtError, MetricCase, MetricQuery, MetricSpecEquivalence, canonicalize
 from evaldata.dbt.metricflow import CanonicalMetricQuery, _spec_key
-from evaldata.scorers import QueryRunner, ScoreContext
-from evaldata.types import (
-    EvalCase,
-    ExecutionResult,
-    GoldMetricQuery,
-    GoldQuery,
-    MetricQuery,
-    PlatformRef,
-    ScoreResult,
-    SolverOutput,
-    Sql,
-)
+from evaldata.types import PlatformRef, ScoreResult
 
 pytestmark = pytest.mark.unit
 
 TARGET = Path(__file__).parent / "fixtures" / "jaffle_duckdb" / "artifacts"
 PLATFORM = PlatformRef(name="duck", kind="duckdb")
-_RESULT = ExecutionResult(rows=[], latency_seconds=0.0)
 
 
-class _NullAdapter:
-    """An adapter that is never executed — spec equivalence touches no warehouse."""
-
-    def execute(self, sql: str) -> ExecutionResult:  # pragma: no cover - never called
-        msg = "MetricSpecEquivalence must not execute SQL"
-        raise AssertionError(msg)
-
-    def cancel(self) -> None: ...
-
-    def close(self) -> None: ...
+def _case(gold: MetricQuery, *, target: Path = TARGET) -> MetricCase:
+    return MetricCase(id="c", input="q", gold=gold, platform=PLATFORM, target_dir=str(target))
 
 
-def _context() -> ScoreContext:
-    return ScoreContext(queries=QueryRunner(_NullAdapter(), Sql("select 1"), "duckdb", None))
-
-
-def _case(gold: MetricQuery, *, target: Path | None = TARGET) -> EvalCase:
-    metadata = {} if target is None else {TARGET_DIR_KEY: str(target)}
-    return EvalCase(id="c", input="q", expected=GoldMetricQuery(query=gold), platform=PLATFORM, metadata=metadata)
-
-
-def _score(case: EvalCase, output: SolverOutput) -> ScoreResult:
-    return MetricSpecEquivalence().score(case, output, _RESULT, context=_context())
+def _score(case: MetricCase, query: MetricQuery) -> ScoreResult:
+    return MetricSpecEquivalence().score(case, query)
 
 
 def test_canonicalize_resolves_default_grain() -> None:
@@ -122,23 +92,20 @@ def test_spec_key_includes_grain_and_date_part() -> None:
 
 def test_scorer_confirms_equivalent_queries() -> None:
     case = _case(MetricQuery(metrics=["revenue"], group_by=["metric_time"]))
-    output = SolverOutput(query=MetricQuery(metrics=["revenue"], group_by=["metric_time__day"]))
-    score = _score(case, output)
+    score = _score(case, MetricQuery(metrics=["revenue"], group_by=["metric_time__day"]))
     assert score.verdict == "pass"
     assert score.basis == "proven"
 
 
 def test_scorer_is_inconclusive_for_different_queries() -> None:
     case = _case(MetricQuery(metrics=["revenue"], group_by=["metric_time"]))
-    output = SolverOutput(query=MetricQuery(metrics=["order_count"], group_by=["metric_time"]))
-    score = _score(case, output)
+    score = _score(case, MetricQuery(metrics=["order_count"], group_by=["metric_time"]))
     assert score.verdict == "inconclusive"
 
 
 def test_scorer_is_inconclusive_when_model_query_is_invalid() -> None:
     case = _case(MetricQuery(metrics=["revenue"]))
-    output = SolverOutput(query=MetricQuery(metrics=["does_not_exist"]))
-    score = _score(case, output)
+    score = _score(case, MetricQuery(metrics=["does_not_exist"]))
     assert score.verdict == "inconclusive"
     assert score.explanation is not None
     assert score.explanation.startswith("model query:")
@@ -146,29 +113,7 @@ def test_scorer_is_inconclusive_when_model_query_is_invalid() -> None:
 
 def test_scorer_is_inconclusive_when_gold_query_is_invalid() -> None:
     case = _case(MetricQuery(metrics=["does_not_exist"]))
-    output = SolverOutput(query=MetricQuery(metrics=["revenue"]))
-    score = _score(case, output)
+    score = _score(case, MetricQuery(metrics=["revenue"]))
     assert score.verdict == "inconclusive"
     assert score.explanation is not None
     assert score.explanation.startswith("gold query:")
-
-
-def test_scorer_is_inconclusive_without_target_dir() -> None:
-    case = _case(MetricQuery(metrics=["revenue"]), target=None)
-    output = SolverOutput(query=MetricQuery(metrics=["revenue"]))
-    score = _score(case, output)
-    assert score.verdict == "inconclusive"
-
-
-def test_scorer_rejects_non_metric_gold() -> None:
-    case = EvalCase(id="c", input="q", expected=GoldQuery(sql="select 1"), platform=PLATFORM)
-    output = SolverOutput(query=MetricQuery(metrics=["revenue"]))
-    with pytest.raises(TypeError):
-        _score(case, output)
-
-
-def test_scorer_rejects_output_without_metric_query() -> None:
-    case = _case(MetricQuery(metrics=["revenue"]))
-    output = SolverOutput(output="select 1")
-    with pytest.raises(TypeError):
-        _score(case, output)
