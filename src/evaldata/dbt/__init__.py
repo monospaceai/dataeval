@@ -24,9 +24,12 @@ from evaldata.dbt.context import (
 )
 from evaldata.dbt.errors import DbtError
 from evaldata.dbt.loader import Mode, load_dbt
+from evaldata.dbt.metric_spec_equivalence import MetricSpecEquivalence
+from evaldata.dbt.metricflow import CanonicalMetricQuery, canonicalize
 from evaldata.dbt.profile import platform_from_profile
 
 __all__ = [
+    "CanonicalMetricQuery",
     "Column",
     "DbtContext",
     "DbtError",
@@ -35,6 +38,7 @@ __all__ = [
     "Entity",
     "Measure",
     "Metric",
+    "MetricSpecEquivalence",
     "Mode",
     "ModelRef",
     "Relation",
@@ -43,6 +47,7 @@ __all__ = [
     "SemanticModel",
     "SourceRef",
     "TableSchema",
+    "canonicalize",
     "load_dbt",
     "platform_from_profile",
 ]

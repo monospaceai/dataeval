@@ -217,6 +217,33 @@ class GoldQuery(BaseModel):
     sql: Annotated[str, Field(min_length=1)]
 
 
+class MetricQuery(BaseModel):
+    """A dbt Semantic Layer query: the metrics to compute and how to slice, filter, and limit them.
+
+    `group_by` holds MetricFlow group-by items (a dimension, an entity, or a time dimension with a
+    grain, e.g. `metric_time__month` or `customer__country`). `where` holds MetricFlow filter
+    expressions (e.g. `{{ Dimension('order_id__is_food_order') }} = true`). `order_by` holds
+    group-by or metric names, each optionally prefixed with `-` for descending.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    metrics: Annotated[list[str], Field(min_length=1)]
+    group_by: list[str] = Field(default_factory=list)
+    where: list[str] = Field(default_factory=list)
+    order_by: list[str] = Field(default_factory=list)
+    limit: Annotated[int, Field(ge=0)] | None = None
+
+
+class GoldMetricQuery(BaseModel):
+    """Expected outcome as a gold dbt Semantic Layer query whose resolved form is the expected answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["gold_metric_query"] = "gold_metric_query"
+    query: MetricQuery
+
+
 class RowCountExpectation(BaseModel):
     """The result set must contain exactly this many rows."""
 
@@ -298,7 +325,7 @@ def _infer_result_set_kind(value: Any) -> Any:
 
 
 _TaggedExpected = Annotated[
-    UntypedResultSet | TypedResultSet | GoldQuery | ExpectationSuite,
+    UntypedResultSet | TypedResultSet | GoldQuery | GoldMetricQuery | ExpectationSuite,
     Field(discriminator="kind"),
 ]
 
@@ -443,15 +470,15 @@ class LlmError(Error):
 
 
 class SolverOutput(BaseModel):
-    """A Solver's output: either a successful `output` artifact or an `error`.
+    """A Solver's output: a successful artifact or an `error`.
 
-    Exactly one of `output`/`error` is set (enforced by a validator). For SQL solvers,
-    `output` is the SQL to run.
+    Exactly one of `output`, `query`, or `error` must be set.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     output: Annotated[Sql, Field(min_length=1)] | None = None
+    query: MetricQuery | None = None
     error: SolverError | None = None
     prompt_tokens: Annotated[int, Field(ge=0)] | None = None
     completion_tokens: Annotated[int, Field(ge=0)] | None = None
@@ -460,17 +487,9 @@ class SolverOutput(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _exactly_one_of_output_or_error(self) -> "SolverOutput":
-        """Enforce that exactly one of `output`/`error` is set.
-
-        Returns:
-            The validated `SolverOutput`.
-
-        Raises:
-            ValueError: If Pydantic validation fails.
-        """
-        if (self.output is None) == (self.error is None):
-            msg = "SolverOutput requires exactly one of 'output' or 'error' to be set"
+    def _exactly_one_artifact_or_error(self) -> "SolverOutput":
+        if sum(field is not None for field in (self.output, self.query, self.error)) != 1:
+            msg = "SolverOutput requires exactly one of 'output', 'query', or 'error' to be set"
             raise ValueError(msg)
         return self
 

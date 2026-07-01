@@ -915,6 +915,7 @@ dependencies = [
 all = [
     { name = "databricks-sdk" },
     { name = "databricks-sql-connector" },
+    { name = "dbt-metricflow" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-bigquery-storage" },
     { name = "litellm" },
@@ -947,6 +948,9 @@ databricks = [
 ]
 dbt = [
     { name = "pyyaml" },
+]
+dbt-sl = [
+    { name = "dbt-metricflow" },
 ]
 litellm = [
     { name = "litellm" },
@@ -988,8 +992,9 @@ fixtures = [
 requires-dist = [
     { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.30.0" },
     { name = "databricks-sql-connector", marker = "extra == 'databricks'", specifier = ">=4.2.6" },
+    { name = "dbt-metricflow", marker = "extra == 'dbt-sl'", specifier = ">=0.13" },
     { name = "duckdb", specifier = ">=1.5.3" },
-    { name = "evaldata", extras = ["all-platforms", "litellm", "tracing", "benchmarks", "dbt"], marker = "extra == 'all'" },
+    { name = "evaldata", extras = ["all-platforms", "litellm", "tracing", "benchmarks", "dbt", "dbt-sl"], marker = "extra == 'all'" },
     { name = "evaldata", extras = ["postgres", "snowflake", "bigquery", "databricks"], marker = "extra == 'all-platforms'" },
     { name = "google-cloud-bigquery", marker = "extra == 'bigquery'", specifier = ">=3.41.0" },
     { name = "google-cloud-bigquery-storage", marker = "extra == 'bigquery'", specifier = ">=2.38.0" },
@@ -1008,7 +1013,7 @@ requires-dist = [
     { name = "sqlglot", specifier = ">=30.9.0" },
     { name = "typer", specifier = ">=0.25.1" },
 ]
-provides-extras = ["postgres", "snowflake", "bigquery", "databricks", "litellm", "benchmarks", "dbt", "tracing", "all-platforms", "all"]
+provides-extras = ["postgres", "snowflake", "bigquery", "databricks", "litellm", "benchmarks", "dbt", "dbt-sl", "tracing", "all-platforms", "all"]
 
 [package.metadata.requires-dev]
 dev = [
