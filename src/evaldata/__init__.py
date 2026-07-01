@@ -19,7 +19,7 @@ from evaldata.scorers import (
     observed_equivalence,
     sql_equivalence_judge,
 )
-from evaldata.solvers import SCHEMA_PROMPT_TEMPLATE, CallableSolver, PromptSolver
+from evaldata.solvers import SCHEMA_PROMPT_TEMPLATE, CallableSolver, MetricLayerSolver, PromptSolver
 from evaldata.types import EvalCase, PlatformRef
 
 if TYPE_CHECKING:
@@ -38,6 +38,7 @@ __all__ = [
     "LiteLlm",
     "Llm",
     "LlmJudge",
+    "MetricLayerSolver",
     "PlatformRef",
     "PromptSolver",
     "ResultSetEquivalence",

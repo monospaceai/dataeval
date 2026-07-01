@@ -8,8 +8,9 @@ import pytest
 from evaldata.dbt.context import DbtContext, DbtTest, ModelRef, Relation
 from evaldata.dbt.errors import DbtError
 from evaldata.dbt.loader import _expectation_for, _model_cases, _test_cases, load_dbt
+from evaldata.dbt.metric_spec_equivalence import TARGET_DIR_KEY
 from evaldata.platforms.registry import duckdb_platform
-from evaldata.types import ExpectationSuite, GoldQuery
+from evaldata.types import ExpectationSuite, GoldMetricQuery, GoldQuery
 
 pytestmark = pytest.mark.unit
 
@@ -66,6 +67,62 @@ def test_model_mode(tmp_path: Path) -> None:
     assert "select" in customers.expected.sql.lower()
     assert customers.metadata["model"] == "customers"
     assert customers.metadata["source"] == "dbt"
+
+
+def test_metrics_mode(tmp_path: Path) -> None:
+    cases_file = _write_cases(
+        tmp_path,
+        """
+        - question: Revenue by month?
+          metrics: [revenue]
+          group_by: [metric_time__month]
+          order_by: ["-metric_time__month"]
+          limit: 12
+          id: revenue-by-month
+        - question: How many orders?
+          metrics: [order_count]
+        """,
+    )
+    cases = load_dbt(ARTIFACTS, platform=PLATFORM, cases=cases_file, mode="metrics")
+    assert not isinstance(cases, DbtError)
+    assert [c.id for c in cases] == ["revenue-by-month", "dbt/metrics/1"]
+
+    first = cases[0]
+    assert first.input == "Revenue by month?"
+    assert isinstance(first.expected, GoldMetricQuery)
+    assert first.expected.query.metrics == ["revenue"]
+    assert first.expected.query.group_by == ["metric_time__month"]
+    assert first.expected.query.order_by == ["-metric_time__month"]
+    assert first.expected.query.limit == 12
+    assert first.metadata["source"] == "dbt"
+    assert first.metadata[TARGET_DIR_KEY] == str(ARTIFACTS)
+    assert "revenue" in first.metadata["sl_context"]
+
+
+def test_metrics_requires_cases() -> None:
+    result = load_dbt(ARTIFACTS, platform=PLATFORM, mode="metrics")
+    assert isinstance(result, DbtError)
+    assert result.kind == "cases_not_found"
+
+
+def test_metrics_cases_file_missing(tmp_path: Path) -> None:
+    result = load_dbt(ARTIFACTS, platform=PLATFORM, cases=tmp_path / "nope.yml", mode="metrics")
+    assert isinstance(result, DbtError)
+    assert result.kind == "cases_not_found"
+
+
+def test_metrics_cases_not_a_list(tmp_path: Path) -> None:
+    result = load_dbt(ARTIFACTS, platform=PLATFORM, cases=_write_cases(tmp_path, "metrics: [x]\n"), mode="metrics")
+    assert isinstance(result, DbtError)
+    assert result.kind == "cases_invalid"
+
+
+def test_metrics_invalid_entry(tmp_path: Path) -> None:
+    result = load_dbt(
+        ARTIFACTS, platform=PLATFORM, cases=_write_cases(tmp_path, "- question: no metrics\n"), mode="metrics"
+    )
+    assert isinstance(result, DbtError)
+    assert result.kind == "cases_invalid"
 
 
 def test_bad_target_dir(tmp_path: Path) -> None:

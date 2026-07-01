@@ -8,27 +8,44 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from evaldata.dbt._yaml import read_yaml
 from evaldata.dbt.context import DbtContext, DbtTest
 from evaldata.dbt.errors import DbtError
+from evaldata.dbt.metric_spec_equivalence import TARGET_DIR_KEY
 from evaldata.types import (
     EvalCase,
     Expectation,
     ExpectationSuite,
+    GoldMetricQuery,
     GoldQuery,
+    MetricQuery,
     NotNullExpectation,
     PlatformRef,
     UniqueExpectation,
 )
 
-Mode = Literal["authored", "model", "tests"]
+Mode = Literal["authored", "model", "tests", "metrics"]
 
 
 class _AuthoredCase(BaseModel):
-    """One entry in a cases file."""
+    """One entry in an authored cases file."""
 
     model_config = ConfigDict(extra="forbid")
 
     question: Annotated[str, Field(min_length=1)]
     gold_sql: Annotated[str, Field(min_length=1)]
     select: list[str] | None = None
+    id: str | None = None
+
+
+class _MetricCase(BaseModel):
+    """One entry in a metric cases file: a question and the gold Semantic Layer query."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: Annotated[str, Field(min_length=1)]
+    metrics: Annotated[list[str], Field(min_length=1)]
+    group_by: list[str] = Field(default_factory=list)
+    where: list[str] = Field(default_factory=list)
+    order_by: list[str] = Field(default_factory=list)
+    limit: Annotated[int, Field(ge=0)] | None = None
     id: str | None = None
 
 
@@ -41,23 +58,26 @@ def load_dbt(
 ) -> list[EvalCase] | DbtError:
     """Build eval cases from a built dbt project's artifacts.
 
-    The schema context for each case is the project's tables (sources and models) rendered as
-    `CREATE TABLE` statements into `metadata["schema_ddl"]`, ready for a schema-aware solver.
+    The SQL modes render the project's tables (sources and models) as `CREATE TABLE` statements
+    into `metadata["schema_ddl"]` for a schema-aware solver; `metrics` mode instead renders the
+    semantic layer into `metadata["sl_context"]`.
 
-    In `authored` mode (the default), `cases` is a YAML/JSON file of `{question, gold_sql,
-    select?, id?}` entries; `select` scopes the schema context to named tables. In `model` mode,
-    each documented, compiled model becomes a case whose question is the model's description and
+    In `authored` mode, `cases` is a YAML/JSON file of `{question, gold_sql, select?, id?}`
+    entries; `select` scopes the schema context to named tables. In `model` mode, each
+    documented, compiled model becomes a case whose question is the model's description and
     whose gold query is the model's compiled SQL. In `tests` mode, each documented model with
     `not_null` or `unique` tests becomes a case whose expected outcome is an `ExpectationSuite`
-    built from those tests.
+    built from those tests. In `metrics` mode, `cases` is a file of `{question, metrics,
+    group_by?, where?, order_by?, limit?, id?}` entries, each becoming a Semantic Layer case
+    whose expected outcome is a gold `MetricQuery`.
 
     Args:
         target_dir: A dbt `target/` directory holding `manifest.json` (and optionally
-            `catalog.json`).
+            `catalog.json` and `semantic_manifest.json`).
         platform: The warehouse the project is built in; every case runs against it.
-        cases: Path to the cases file (required for `authored` mode; ignored for `model`).
-        mode: `authored` to read `cases`, `model` to derive cases from documented models, or
-            `tests` to build expectation suites from documented models' data tests.
+        cases: Path to the cases file (required for `authored` and `metrics` modes; ignored for
+            `model` and `tests`).
+        mode: Controls which case-building strategy is used; see above for each mode's behaviour.
 
     Returns:
         The eval cases, or a `DbtError` if the artifacts, cases, or mode inputs cannot be read.
@@ -72,6 +92,8 @@ def load_dbt(
             return _model_cases(context, platform)
         case "tests":
             return _test_cases(context, platform)
+        case "metrics":
+            return _metric_cases(context, platform, cases, target_dir)
         case _ as unreachable:  # pragma: no cover - exhaustiveness guard
             assert_never(unreachable)
 
@@ -98,6 +120,43 @@ def _authored_cases(context: DbtContext, platform: PlatformRef, cases: str | Pat
                 expected=GoldQuery(sql=spec.gold_sql),
                 platform=platform,
                 metadata=_metadata(context.schema_context(select=spec.select).as_text()),
+            )
+        )
+    return out
+
+
+def _metric_cases(
+    context: DbtContext, platform: PlatformRef, cases: str | Path | None, target_dir: str | Path
+) -> list[EvalCase] | DbtError:
+    if cases is None:
+        return DbtError(kind="cases_not_found", message="metrics mode requires a cases file")
+    raw = read_yaml(Path(cases), not_found="cases_not_found", invalid="cases_invalid")
+    if isinstance(raw, DbtError):
+        return raw
+    if not isinstance(raw, list):
+        return DbtError(kind="cases_invalid", message=f"{cases} must be a list of cases")
+
+    sl_context = context.sl_context().as_text()
+    out: list[EvalCase] = []
+    for index, entry in enumerate(raw):
+        try:
+            spec = _MetricCase.model_validate(entry)
+        except ValidationError as e:
+            return DbtError(kind="cases_invalid", message=f"case {index} is invalid: {e}", cause=e)
+        query = MetricQuery(
+            metrics=spec.metrics,
+            group_by=spec.group_by,
+            where=spec.where,
+            order_by=spec.order_by,
+            limit=spec.limit,
+        )
+        out.append(
+            EvalCase(
+                id=spec.id or f"dbt/metrics/{index}",
+                input=spec.question,
+                expected=GoldMetricQuery(query=query),
+                platform=platform,
+                metadata=_sl_metadata(sl_context, target_dir),
             )
         )
     return out
@@ -161,3 +220,7 @@ def _metadata(schema_ddl: str, *, model: str | None = None) -> dict[str, Any]:
     if model is not None:
         metadata["model"] = model
     return metadata
+
+
+def _sl_metadata(sl_context: str, target_dir: str | Path) -> dict[str, Any]:
+    return {"source": "dbt", "sl_context": sl_context, TARGET_DIR_KEY: str(target_dir)}
