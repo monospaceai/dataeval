@@ -11,10 +11,8 @@ SCORER_NAME = "metric_spec_equivalence"
 class MetricSpecEquivalence:
     """Compares two metric queries by the forms MetricFlow resolves them to.
 
-    Equal forms pass (proven). A candidate that MetricFlow rejects fails (proven) — an
-    unresolvable query cannot answer the question. Everything else — unequal forms, an invalid
-    gold, or the toolchain being unavailable — is inconclusive; it never refutes on a structural
-    difference alone.
+    Equal forms pass (proven). A candidate MetricFlow rejects fails (proven). Everything else —
+    unequal forms, an invalid gold, or the toolchain being unavailable — is inconclusive.
     """
 
     def score(self, case: MetricCase, query: MetricQuery) -> ScoreResult:

@@ -136,9 +136,7 @@ class SemanticLayerContext:
     def as_text(self) -> str:
         """Render the metrics and each semantic model's entities, dimensions, and measures.
 
-        Rendering per semantic model keeps a dimension's owning model and entities visible, so a
-        same-named dimension on two models stays distinguishable. Sections with no members are
-        omitted; an empty layer renders as the empty string.
+        Sections with no members are omitted; an empty layer renders as the empty string.
 
         Returns:
             The rendered semantic-layer context block.
